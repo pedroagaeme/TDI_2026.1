@@ -297,13 +297,32 @@ export function VideoQuizApp() {
 
     try {
       setState('analyzing');
-      const formData = new FormData();
-      formData.append('video', file);
-      formData.append('accountId', userId);
+      // Upload the file directly from the browser to Supabase storage to avoid Vercel function size limits
+      const analysisIdValue = crypto.randomUUID();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const videoObjectPath = `${userId}/${analysisIdValue}/video-${safeName}`;
 
+      const { error: uploadError } = await supabase.storage.from('videos').upload(videoObjectPath, file, {
+        upsert: false,
+        contentType: file.type || 'video/mp4'
+      });
+
+      if (uploadError) {
+        setState('error');
+        setError(uploadError.message);
+        return;
+      }
+
+      // Notify the server with a small JSON payload containing the Supabase path
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        body: formData
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId: userId,
+          analysisId: analysisIdValue,
+          fileName: file.name,
+          videoObjectPath
+        })
       });
 
       const payload = (await response.json().catch(() => null)) as
