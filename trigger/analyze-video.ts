@@ -41,7 +41,6 @@ export const analyzeVideoTask = task({
     const storedAt = new Date().toISOString();
     const annotationPath = `${payload.accountId}/${payload.analysisId}/google-annotations.json`;
     const questionsPath = `${payload.accountId}/${payload.analysisId}/questions.json`;
-    const manifestPath = `${payload.accountId}/${payload.analysisId}/analysis-manifest.json`;
 
     const annotationPayload = {
       analysisId: payload.analysisId,
@@ -70,23 +69,9 @@ export const analyzeVideoTask = task({
       savedAt: storedAt
     };
 
-    const manifestPayload = {
-      analysisId: payload.analysisId,
-      accountId: payload.accountId,
-      fileName: payload.fileName,
-      videoObjectPath: payload.videoObjectPath,
-      googleAnnotationPath: annotationPath,
-      openRouterResponsePath: questionsPath,
-      analysisSummary: analysis.visualSummary,
-      sourceLabel: analysis.sourceLabel,
-      quizMomentCount: quizGeneration.quizMoments.length,
-      savedAt: storedAt
-    };
-
-    const [annotationUpload, questionsUpload, manifestUpload] = await Promise.all([
+    const [annotationUpload, questionsUpload] = await Promise.all([
       uploadJson(supabase, 'annotations', annotationPath, annotationPayload),
-      uploadJson(supabase, 'questions', questionsPath, questionsPayload),
-      uploadJson(supabase, 'videos', manifestPath, manifestPayload)
+      uploadJson(supabase, 'questions', questionsPath, questionsPayload)
     ]);
 
     if (annotationUpload.error) {
@@ -95,10 +80,6 @@ export const analyzeVideoTask = task({
 
     if (questionsUpload.error) {
       throw new Error(questionsUpload.error.message);
-    }
-
-    if (manifestUpload.error) {
-      throw new Error(manifestUpload.error.message);
     }
 
     return {
