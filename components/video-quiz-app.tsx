@@ -1,9 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { QuizPlayer } from '@/TDI_2026.1/components/quiz-player';
-import { supabase } from '@/TDI_2026.1/lib/supabase-client';
-import type { AnalyzeApiResponse, QuizMoment } from '@/TDI_2026.1/lib/types';
+import { QuizPlayer } from '@/components/quiz-player';
+import { supabase } from '@/lib/supabase-client';
+import type { AnalyzeApiResponse, QuizMoment } from '@/lib/types';
 
 type RequestState = 'idle' | 'uploading' | 'analyzing' | 'ready' | 'error';
 type AuthMode = 'login' | 'signup';

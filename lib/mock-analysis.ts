@@ -1,4 +1,4 @@
-import type { NormalizedVideoAnalysis, QuizMoment } from '@/TDI_2026.1/lib/types';
+import type { NormalizedVideoAnalysis, QuizMoment } from '@/lib/types';
 
 const fallbackQuizMoments: QuizMoment[] = [
   {

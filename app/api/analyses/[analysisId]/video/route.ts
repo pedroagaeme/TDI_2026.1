@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { NextResponse } from 'next/server';
-import { readManifest, sanitizeAccountId } from '@/TDI_2026.1/lib/analysis-storage';
+import { readManifest, sanitizeAccountId } from '@/lib/analysis-storage';
 
 export const runtime = 'nodejs';
 

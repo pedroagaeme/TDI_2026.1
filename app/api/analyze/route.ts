@@ -1,9 +1,9 @@
 import { writeFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import { createAnalysisStorageRecord } from '@/TDI_2026.1/lib/analysis-storage';
-import { analyzeVideoWithGoogle } from '@/TDI_2026.1/lib/google-video-intelligence';
-import { generateQuizMomentsFromOpenRouter } from '@/TDI_2026.1/lib/openrouter';
-import type { AnalyzeApiResponse } from '@/TDI_2026.1/lib/types';
+import { createAnalysisStorageRecord } from '@/lib/analysis-storage';
+import { analyzeVideoWithGoogle } from '@/lib/google-video-intelligence';
+import { generateQuizMomentsFromOpenRouter } from '@/lib/openrouter';
+import type { AnalyzeApiResponse } from '@/lib/types';
 
 export const runtime = 'nodejs';
 

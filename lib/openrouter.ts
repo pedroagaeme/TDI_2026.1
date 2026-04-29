@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { NormalizedVideoAnalysis, QuizMoment } from '@/TDI_2026.1/lib/types';
-import { quizMomentsSchema } from '@/TDI_2026.1/lib/types';
+import type { NormalizedVideoAnalysis, QuizMoment } from '@/lib/types';
+import { quizMomentsSchema } from '@/lib/types';
 
 const openRouterSchema = z.object({
   choices: z

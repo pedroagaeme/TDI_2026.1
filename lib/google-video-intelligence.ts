@@ -1,6 +1,6 @@
 import { GoogleAuth } from 'google-auth-library';
 import { readFile } from 'node:fs/promises';
-import type { AnalysisCue, NormalizedVideoAnalysis } from '@/TDI_2026.1/lib/types';
+import type { AnalysisCue, NormalizedVideoAnalysis } from '@/lib/types';
 
 const GOOGLE_API_ROOT = 'https://videointelligence.googleapis.com/v1';
 

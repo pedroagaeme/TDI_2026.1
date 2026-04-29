@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
-import type { StoredAnalysisManifest } from '@/TDI_2026.1/lib/types';
+import type { StoredAnalysisManifest } from '@/lib/types';
 
 const STORAGE_ROOT = process.env.VIDEO_ANALYSIS_STORAGE_DIR?.trim() || join(process.cwd(), 'storage', 'accounts');
 

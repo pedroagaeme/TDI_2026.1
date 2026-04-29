@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { QuizAnswer, QuizMoment } from '@/TDI_2026.1/lib/types';
+import type { QuizAnswer, QuizMoment } from '@/lib/types';
 
 interface QuizPlayerProps {
   videoUrl: string;

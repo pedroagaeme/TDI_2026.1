@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { listManifestsForAccount, sanitizeAccountId } from '@/TDI_2026.1/lib/analysis-storage';
-import type { ListStoredAnalysesApiResponse, StoredAnalysisItem } from '@/TDI_2026.1/lib/types';
+import { listManifestsForAccount, sanitizeAccountId } from '@/lib/analysis-storage';
+import type { ListStoredAnalysesApiResponse, StoredAnalysisItem } from '@/lib/types';
 
 export const runtime = 'nodejs';
 

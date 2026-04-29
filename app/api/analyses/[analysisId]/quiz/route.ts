@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import { readManifest, sanitizeAccountId } from '@/TDI_2026.1/lib/analysis-storage';
-import type { AnalyzeApiResponse } from '@/TDI_2026.1/lib/types';
+import { readManifest, sanitizeAccountId } from '@/lib/analysis-storage';
+import type { AnalyzeApiResponse } from '@/lib/types';
 
 export const runtime = 'nodejs';
 

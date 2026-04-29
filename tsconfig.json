@@ -32,10 +32,10 @@
     ]
   },
   "include": [
-    "TDI_2026.1/next-env.d.ts",
+    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "TDI_2026.1/.next/types/**/*.ts"
+    ".next/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
