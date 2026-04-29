@@ -13,7 +13,8 @@ function toMb(size: number) {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const uploaded = formData.get('video');
-  const accountId = sanitizeAccountId(typeof formData.get('accountId') === 'string' ? formData.get('accountId') : '');
+  const accountIdValue = formData.get('accountId');
+  const accountId = sanitizeAccountId(typeof accountIdValue === 'string' ? accountIdValue : '');
 
   if (!accountId) {
     return NextResponse.json({ error: 'Account ID is required.' }, { status: 400 });
