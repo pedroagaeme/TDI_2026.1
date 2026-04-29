@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { QuizPlayer } from '@/components/quiz-player';
 import { supabase } from '@/lib/supabase-client';
-import type { AnalyzeApiResponse, QuizMoment } from '@/lib/types';
+import type { QuizMoment } from '@/lib/types';
 
 type RequestState = 'idle' | 'uploading' | 'analyzing' | 'ready' | 'error';
 type AuthMode = 'login' | 'signup';
@@ -74,6 +74,7 @@ export function VideoQuizApp() {
   const [quizMoments, setQuizMoments] = useState<QuizMoment[]>([]);
   const [sourceLabel, setSourceLabel] = useState<'google' | 'mock' | null>(null);
   const [analysisId, setAnalysisId] = useState<string | null>(null);
+  const [deletingAnalysisId, setDeletingAnalysisId] = useState<string | null>(null);
 
   const fileLabel = useMemo(() => {
     if (!file) {
@@ -203,6 +204,63 @@ export function VideoQuizApp() {
     } catch (savedLoadError) {
       setState('error');
       setError((savedLoadError as Error).message);
+    }
+  }
+
+  async function deleteSavedAnalysis(item: SavedAnalysisEntry) {
+    if (!userId) {
+      return;
+    }
+
+    const confirmed = typeof window === 'undefined'
+      ? true
+      : window.confirm(`Delete \"${item.fileName}\" and all related quiz artifacts? This cannot be undone.`);
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAnalysisId(item.analysisId);
+    setError(null);
+
+    try {
+      const analysisPrefix = `${userId}/${item.analysisId}`;
+      const { data: videoFiles, error: listVideoError } = await supabase.storage.from('videos').list(analysisPrefix, {
+        limit: 100,
+        sortBy: { column: 'name', order: 'asc' }
+      });
+
+      if (listVideoError) {
+        throw new Error(listVideoError.message);
+      }
+
+      const videoPathsToRemove = (videoFiles ?? [])
+        .filter((entry) => entry.name && !entry.name.endsWith('/'))
+        .map((entry) => `${analysisPrefix}/${entry.name}`);
+
+      const removals = await Promise.all([
+        videoPathsToRemove.length > 0
+          ? supabase.storage.from('videos').remove(videoPathsToRemove)
+          : Promise.resolve({ data: [], error: null }),
+        supabase.storage.from('questions').remove([item.questionsPath]),
+        supabase.storage.from('annotations').remove([item.annotationsPath])
+      ]);
+
+      const firstError = removals.find((result) => result.error)?.error;
+      if (firstError) {
+        throw new Error(firstError.message);
+      }
+
+      if (analysisId === item.analysisId) {
+        resetSession();
+      }
+
+      await loadSavedAnalyses(userId);
+      setAuthMessage(`Deleted ${item.fileName}.`);
+    } catch (deleteError) {
+      setError((deleteError as Error).message);
+    } finally {
+      setDeletingAnalysisId(null);
     }
   }
 
@@ -579,6 +637,13 @@ export function VideoQuizApp() {
                       <div className="actions" style={{ marginTop: 10 }}>
                         <button className="button button-primary" onClick={() => void loadSavedAnalysisIntoPlayer(item)}>
                           Load in player
+                        </button>
+                        <button
+                          className="button button-secondary"
+                          onClick={() => void deleteSavedAnalysis(item)}
+                          disabled={deletingAnalysisId === item.analysisId}
+                        >
+                          {deletingAnalysisId === item.analysisId ? 'Deleting…' : 'Delete'}
                         </button>
                       </div>
                     </div>

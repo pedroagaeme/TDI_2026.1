@@ -18,9 +18,11 @@ function formatSeconds(value: number) {
 
 export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const overlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [promptOpen, setPromptOpen] = useState(false);
+  const [overlayFading, setOverlayFading] = useState(false);
   const [lastChoice, setLastChoice] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [ended, setEnded] = useState(false);
@@ -40,9 +42,23 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
     setAnswers([]);
     setCurrentIndex(0);
     setPromptOpen(false);
+    setOverlayFading(false);
     setLastChoice(null);
     setEnded(false);
+
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+      overlayTimeoutRef.current = null;
+    }
   }, [videoUrl, quizMoments]);
+
+  useEffect(() => {
+    return () => {
+      if (overlayTimeoutRef.current) {
+        clearTimeout(overlayTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -55,6 +71,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
     const handleTimeUpdate = () => {
       if (!promptOpen && video.currentTime >= threshold) {
         video.pause();
+        setOverlayFading(false);
         setPromptOpen(true);
       }
     };
@@ -81,7 +98,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
   }
 
   function resolveChoice(selected: 'correct' | 'wrong') {
-    if (!currentMoment) {
+    if (!currentMoment || overlayFading) {
       return;
     }
 
@@ -98,14 +115,23 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
       }
     ]);
     setLastChoice(selectedText);
-    setPromptOpen(false);
-    setCurrentIndex((value) => value + 1);
+    setOverlayFading(true);
+
+    if (overlayTimeoutRef.current) {
+      clearTimeout(overlayTimeoutRef.current);
+    }
 
     const video = videoRef.current;
-    if (video) {
-      video.currentTime = currentMoment.timestamp + 0.2;
-      void video.play();
-    }
+    overlayTimeoutRef.current = setTimeout(() => {
+      setPromptOpen(false);
+      setOverlayFading(false);
+      setCurrentIndex((value) => value + 1);
+
+      if (video) {
+        video.currentTime = currentMoment.timestamp + 0.2;
+        void video.play();
+      }
+    }, 320);
   }
 
   const total = playableMoments.length;
@@ -125,6 +151,37 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
           </div>
           <div className="video-frame">
             <video ref={videoRef} controls src={videoUrl} onLoadedMetadata={handleMetadataLoaded} />
+            {currentMoment && promptOpen ? (
+              <div className={`video-quiz-overlay ${overlayFading ? 'is-fading' : ''}`}>
+                <div className="video-quiz-overlay-card">
+                  <h3>What happens next?</h3>
+                  <p>
+                    Timestamp {formatSeconds(currentMoment.timestamp)}. Pick the most likely continuation before the
+                    video resumes.
+                  </p>
+                  <div className="option-grid video-quiz-overlay-options">
+                    <button
+                      className="option-button"
+                      data-choice="correct"
+                      onClick={() => resolveChoice('correct')}
+                      disabled={overlayFading}
+                    >
+                      <strong>Option A</strong>
+                      {currentMoment.correct_option_text}
+                    </button>
+                    <button
+                      className="option-button"
+                      data-choice="wrong"
+                      onClick={() => resolveChoice('wrong')}
+                      disabled={overlayFading}
+                    >
+                      <strong>Option B</strong>
+                      {currentMoment.wrong_option_text}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -143,30 +200,11 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
               </p>
             </div>
 
-            {currentMoment ? (
-              <div className="option-grid">
-                <button
-                  className="option-button"
-                  data-choice="correct"
-                  onClick={() => resolveChoice('correct')}
-                  disabled={!promptOpen && total > 0 && currentIndex > 0}
-                >
-                  <strong>Option A</strong>
-                  {currentMoment.correct_option_text}
-                </button>
-                <button
-                  className="option-button"
-                  data-choice="wrong"
-                  onClick={() => resolveChoice('wrong')}
-                  disabled={!promptOpen && total > 0 && currentIndex > 0}
-                >
-                  <strong>Option B</strong>
-                  {currentMoment.wrong_option_text}
-                </button>
-              </div>
-            ) : (
-              <div className="notice">The quiz will appear once the video starts reaching the generated timestamps.</div>
-            )}
+            <div className="notice">
+              {currentMoment
+                ? `Choices appear as a top overlay at ${formatSeconds(currentMoment.timestamp)} and then fade away after your answer.`
+                : 'The quiz overlay appears automatically when the video reaches generated timestamps.'}
+            </div>
 
             {lastChoice ? <div className="notice notice-success">Last answer recorded: {lastChoice}</div> : null}
           </div>
