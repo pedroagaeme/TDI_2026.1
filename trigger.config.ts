@@ -8,5 +8,6 @@ if (!projectRef) {
 
 export default defineConfig({
   project: projectRef,
-  dirs: ['./trigger']
+  dirs: ['./trigger'],
+  maxDuration: 3600
 });
