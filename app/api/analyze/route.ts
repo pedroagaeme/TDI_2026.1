@@ -1,9 +1,8 @@
-import { writeFile } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
-import { createAnalysisStorageRecord } from '@/lib/analysis-storage';
-import { analyzeVideoWithGoogle } from '@/lib/google-video-intelligence';
-import { generateQuizMomentsFromOpenRouter } from '@/lib/openrouter';
-import type { AnalyzeApiResponse } from '@/lib/types';
+import { tasks } from '@trigger.dev/sdk';
+import { sanitizeAccountId } from '@/lib/analysis-storage';
+import { createSupabaseAdminClient } from '@/lib/supabase-admin';
+import type { analyzeVideoTask } from '@/trigger/analyze-video';
 
 export const runtime = 'nodejs';
 
@@ -14,9 +13,9 @@ function toMb(size: number) {
 export async function POST(request: Request) {
   const formData = await request.formData();
   const uploaded = formData.get('video');
-  const accountId = formData.get('accountId');
+  const accountId = sanitizeAccountId(typeof formData.get('accountId') === 'string' ? formData.get('accountId') : '');
 
-  if (typeof accountId !== 'string' || !accountId.trim()) {
+  if (!accountId) {
     return NextResponse.json({ error: 'Account ID is required.' }, { status: 400 });
   }
 
@@ -35,84 +34,34 @@ export async function POST(request: Request) {
     );
   }
 
-  const storageRecord = await createAnalysisStorageRecord(uploaded.name, accountId);
+  const analysisId = crypto.randomUUID();
+  const safeName = uploaded.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const videoObjectPath = `${accountId}/${analysisId}/video-${safeName}`;
 
   try {
-    const buffer = Buffer.from(await uploaded.arrayBuffer());
-    await writeFile(storageRecord.videoPath, buffer);
+    const supabase = createSupabaseAdminClient();
+    const { error: uploadError } = await supabase.storage.from('videos').upload(videoObjectPath, Buffer.from(await uploaded.arrayBuffer()), {
+      contentType: uploaded.type || 'video/mp4',
+      upsert: false
+    });
 
-    const analysis = await analyzeVideoWithGoogle(storageRecord.videoPath, uploaded.name);
-    const quizGeneration = await generateQuizMomentsFromOpenRouter(analysis, uploaded.name);
+    if (uploadError) {
+      return NextResponse.json({ error: uploadError.message }, { status: 500 });
+    }
 
-    await writeFile(
-      storageRecord.googleAnnotationPath,
-      JSON.stringify(
-        {
-          analysisId: storageRecord.analysisId,
-          accountId: storageRecord.accountId,
-          fileName: uploaded.name,
-          videoPath: storageRecord.videoPath,
-          googleAnnotation: analysis.rawGoogleResponse,
-          normalizedAnalysis: {
-            transcript: analysis.transcript,
-            visualSummary: analysis.visualSummary,
-            cues: analysis.cues,
-            durationSeconds: analysis.durationSeconds,
-            sourceLabel: analysis.sourceLabel
-          },
-          savedAt: new Date().toISOString()
-        },
-        null,
-        2
-      )
-    );
+    const handle = await tasks.trigger<typeof analyzeVideoTask>('analyze-video', {
+      analysisId,
+      accountId,
+      fileName: uploaded.name,
+      videoObjectPath
+    });
 
-    await writeFile(
-      storageRecord.openRouterResponsePath,
-      JSON.stringify(
-        {
-          analysisId: storageRecord.analysisId,
-          accountId: storageRecord.accountId,
-          fileName: uploaded.name,
-          model: quizGeneration.model,
-          rawContent: quizGeneration.rawContent,
-          rawResponse: quizGeneration.rawResponse,
-          quizMoments: quizGeneration.quizMoments,
-          savedAt: new Date().toISOString()
-        },
-        null,
-        2
-      )
-    );
-
-    await writeFile(
-      storageRecord.manifestPath,
-      JSON.stringify(
-        {
-          analysisId: storageRecord.analysisId,
-          accountId: storageRecord.accountId,
-          fileName: uploaded.name,
-          videoPath: storageRecord.videoPath,
-          googleAnnotationPath: storageRecord.googleAnnotationPath,
-          openRouterResponsePath: storageRecord.openRouterResponsePath,
-          analysisSummary: analysis.visualSummary,
-          sourceLabel: analysis.sourceLabel,
-          quizMomentCount: quizGeneration.quizMoments.length,
-          savedAt: new Date().toISOString()
-        },
-        null,
-        2
-      )
-    );
-
-    const response: AnalyzeApiResponse = {
-      analysisId: storageRecord.analysisId,
-      quizMoments: quizGeneration.quizMoments,
-      analysisSummary: analysis.visualSummary,
-      sourceLabel: analysis.sourceLabel
-    };
-
-    return NextResponse.json(response);
+    return NextResponse.json({
+      analysisId,
+      runId: handle.id,
+      videoObjectPath,
+      status: 'queued'
+    });
   } catch (error) {
     return NextResponse.json(
       {

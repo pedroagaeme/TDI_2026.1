@@ -272,6 +272,14 @@ export async function analyzeVideoWithGoogle(
   filePath: string,
   fileName: string
 ): Promise<NormalizedVideoAnalysis & { rawGoogleResponse: unknown }> {
+  const videoBytes = await readFile(filePath);
+  return analyzeVideoBytesWithGoogle(videoBytes, fileName);
+}
+
+export async function analyzeVideoBytesWithGoogle(
+  videoBytes: Buffer,
+  fileName: string
+): Promise<NormalizedVideoAnalysis & { rawGoogleResponse: unknown }> {
   if (!process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
     throw new Error('GOOGLE_APPLICATION_CREDENTIALS_JSON is required in strict API mode.');
   }
@@ -279,14 +287,13 @@ export async function analyzeVideoWithGoogle(
   const startedAt = Date.now();
   logGoogleVideoIntelligence('Video analysis started.', {
     fileName,
-    filePath,
+    inputType: 'buffer',
     languageCode: process.env.GOOGLE_VIDEO_LANGUAGE || 'en-US'
   });
 
   try {
     const accessToken = await getAccessToken();
-    const videoBytes = await readFile(filePath);
-    logGoogleVideoIntelligence('Video file loaded from disk.', {
+    logGoogleVideoIntelligence('Video bytes loaded.', {
       fileName,
       fileSizeBytes: videoBytes.length,
       fileSizeMb: Number((videoBytes.length / 1024 / 1024).toFixed(2))
