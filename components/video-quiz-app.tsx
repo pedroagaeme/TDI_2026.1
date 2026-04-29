@@ -295,73 +295,32 @@ export function VideoQuizApp() {
     setState('uploading');
     setError(null);
 
-    const analysisIdValue = crypto.randomUUID();
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const videoPath = `${userId}/${analysisIdValue}/video-${safeName}`;
-
-    const { error: uploadError } = await supabase.storage.from('videos').upload(videoPath, file, {
-      upsert: false,
-      contentType: file.type || 'video/mp4'
-    });
-
-    if (uploadError) {
-      setState('error');
-      setError(uploadError.message);
-      return;
-    }
-
     try {
       setState('analyzing');
+      const formData = new FormData();
+      formData.append('video', file);
+      formData.append('accountId', userId);
 
-      const analyzeResponse = await supabase.functions.invoke('analyze-google-video', {
-        body: {
-          analysisId: analysisIdValue,
-          fileName: file.name,
-          videoPath
-        }
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        body: formData
       });
 
-      if (analyzeResponse.error) {
-        throw new Error(analyzeResponse.error.message);
+      const payload = (await response.json().catch(() => null)) as
+        | { analysisId?: string; runId?: string; status?: string; error?: string; details?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || `Request failed with status ${response.status}`);
       }
 
-      const analyzePayload = analyzeResponse.data as AnalyzeApiResponse & {
-        normalizedAnalysis?: {
-          transcript?: string;
-          visualSummary?: string;
-          sourceLabel?: 'google' | 'mock';
-        };
-      };
-
-      const normalizedAnalysis = analyzePayload.normalizedAnalysis ?? {
-        transcript: '',
-        visualSummary: analyzePayload.analysisSummary,
-        sourceLabel: analyzePayload.sourceLabel
-      };
-
-      const questionsResponse = await supabase.functions.invoke('generate-openrouter-questions', {
-        body: {
-          analysisId: analysisIdValue,
-          fileName: file.name,
-          normalizedAnalysis
-        }
-      });
-
-      if (questionsResponse.error) {
-        throw new Error(questionsResponse.error.message);
-      }
-
-      const questionsPayload = questionsResponse.data as {
-        analysisId: string;
-        quizMoments: QuizMoment[];
-      };
-
-      setQuizMoments(questionsPayload.quizMoments);
-      setAnalysisSummary(normalizedAnalysis.visualSummary || analyzePayload.analysisSummary);
-      setSourceLabel(normalizedAnalysis.sourceLabel || analyzePayload.sourceLabel || 'google');
-      setAnalysisId(questionsPayload.analysisId || analysisIdValue);
+      setAnalysisId(payload?.analysisId ?? null);
+      setQuizMoments([]);
+      setAnalysisSummary('Analysis queued. Check back in a moment for the generated quiz moments.');
+      setSourceLabel('google');
       await loadSavedAnalyses(userId);
       setState('ready');
+      setAuthMessage('Analysis queued successfully.');
     } catch (analysisError) {
       setState('error');
       setError((analysisError as Error).message);
