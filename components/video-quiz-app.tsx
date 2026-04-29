@@ -248,7 +248,12 @@ export function VideoQuizApp() {
 
     try {
       if (authMode === 'signup') {
-        const { error: signUpError } = await supabase.auth.signUp({ email: email.trim(), password });
+        const redirectTo = process.env.NEXT_PUBLIC_APP_URL || window.location.origin;
+        const { error: signUpError } = await supabase.auth.signUp(
+          { email: email.trim(), password },
+          // pass redirect so the confirmation/verification email lands on your Vercel domain
+          { emailRedirectTo: redirectTo }
+        );
         if (signUpError) {
           throw new Error(signUpError.message);
         }
