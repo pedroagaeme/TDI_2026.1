@@ -45,7 +45,9 @@ function toSeconds(value?: GoogleTiming): number | undefined {
 
 function extractCredentials() {
   const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON?.trim();
+  logGoogleVideoIntelligence('Extracting Google credentials from environment.');
   if (!raw) {
+    logGoogleVideoIntelligence('No GOOGLE_APPLICATION_CREDENTIALS_JSON found in environment.');
     return undefined;
   }
 
@@ -64,11 +66,21 @@ function extractCredentials() {
   };
 
   try {
-    return parseCandidate(normalized);
+    const parsed = parseCandidate(normalized);
+    logGoogleVideoIntelligence('Parsed GOOGLE_APPLICATION_CREDENTIALS_JSON successfully (raw JSON).', {
+      projectId: typeof parsed.project_id === 'string' ? parsed.project_id : undefined,
+      clientEmail: typeof parsed.client_email === 'string' ? parsed.client_email : undefined
+    });
+    return parsed;
   } catch {
     try {
       const decoded = Buffer.from(normalized, 'base64').toString('utf8');
-      return parseCandidate(decoded);
+      const parsed = parseCandidate(decoded);
+      logGoogleVideoIntelligence('Parsed GOOGLE_APPLICATION_CREDENTIALS_JSON successfully (base64-decoded).', {
+        projectId: typeof parsed.project_id === 'string' ? parsed.project_id : undefined,
+        clientEmail: typeof parsed.client_email === 'string' ? parsed.client_email : undefined
+      });
+      return parsed;
     } catch {
       throw new Error(
         'GOOGLE_APPLICATION_CREDENTIALS_JSON is invalid. Provide raw service-account JSON (single line) or base64-encoded JSON.'
@@ -91,6 +103,7 @@ async function getAccessToken() {
   const accessToken = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token;
 
   if (!accessToken) {
+    logGoogleVideoIntelligence('Google auth did not return an access token.');
     throw new Error('Google auth did not return an access token.');
   }
 
@@ -106,6 +119,9 @@ function buildGoogleHeaders(accessToken: string) {
 
   if (process.env.GOOGLE_PROJECT_ID?.trim()) {
     headers['x-goog-user-project'] = process.env.GOOGLE_PROJECT_ID.trim();
+    logGoogleVideoIntelligence('Including x-goog-user-project header in requests.', {
+      projectId: process.env.GOOGLE_PROJECT_ID.trim()
+    });
   }
 
   return headers;
@@ -123,6 +139,7 @@ const GOOGLE_POLL_MAX_ATTEMPTS = Number(process.env.GOOGLE_VIDEO_POLL_MAX_ATTEMP
 const GOOGLE_POLL_DELAY_MS = Number(process.env.GOOGLE_VIDEO_POLL_DELAY_MS || 5000);
 
 function normalizeGoogleResponse(response: any, fileName: string): NormalizedVideoAnalysis {
+  logGoogleVideoIntelligence('Normalizing Google response.', { fileName });
   const annotation = response?.annotationResults?.[0] ?? {};
   const cues: AnalysisCue[] = [];
   const transcriptParts: string[] = [];
