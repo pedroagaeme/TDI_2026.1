@@ -16,7 +16,44 @@ function formatSeconds(value: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+function getFullscreenElement(): Element | null {
+  const doc = document as Document & {
+    webkitFullscreenElement?: Element | null;
+    mozFullScreenElement?: Element | null;
+  };
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? doc.mozFullScreenElement ?? null;
+}
+
+async function requestContainerFullscreen(el: HTMLElement) {
+  const anyEl = el as HTMLElement & {
+    webkitRequestFullscreen?: () => Promise<void> | void;
+    mozRequestFullScreen?: () => Promise<void> | void;
+  };
+  if (el.requestFullscreen) {
+    await el.requestFullscreen();
+  } else if (anyEl.webkitRequestFullscreen) {
+    await Promise.resolve(anyEl.webkitRequestFullscreen());
+  } else if (anyEl.mozRequestFullScreen) {
+    await Promise.resolve(anyEl.mozRequestFullScreen());
+  }
+}
+
+async function exitFullscreen() {
+  const doc = document as Document & {
+    webkitExitFullscreen?: () => Promise<void> | void;
+    mozCancelFullScreen?: () => Promise<void> | void;
+  };
+  if (document.exitFullscreen) {
+    await document.exitFullscreen();
+  } else if (doc.webkitExitFullscreen) {
+    await Promise.resolve(doc.webkitExitFullscreen());
+  } else if (doc.mozCancelFullScreen) {
+    await Promise.resolve(doc.mozCancelFullScreen());
+  }
+}
+
 export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlayerProps) {
+  const fsRootRef = useRef<HTMLDivElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const overlayTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [answers, setAnswers] = useState<QuizAnswer[]>([]);
@@ -26,6 +63,9 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
   const [lastChoice, setLastChoice] = useState<string | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [ended, setEnded] = useState(false);
+  /** When true, left card shows the correct answer; when false, left shows the decoy. */
+  const [correctOnLeft, setCorrectOnLeft] = useState(true);
+  const [fsActive, setFsActive] = useState(false);
 
   const playableMoments = useMemo(() => {
     if (!duration) {
@@ -45,6 +85,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
     setOverlayFading(false);
     setLastChoice(null);
     setEnded(false);
+    setCorrectOnLeft(true);
 
     if (overlayTimeoutRef.current) {
       clearTimeout(overlayTimeoutRef.current);
@@ -61,6 +102,24 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
   }, []);
 
   useEffect(() => {
+    function syncFs() {
+      const root = fsRootRef.current;
+      setFsActive(Boolean(root && getFullscreenElement() === root));
+    }
+
+    document.addEventListener('fullscreenchange', syncFs);
+    document.addEventListener('webkitfullscreenchange', syncFs);
+    document.addEventListener('mozfullscreenchange', syncFs);
+    syncFs();
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFs);
+      document.removeEventListener('webkitfullscreenchange', syncFs);
+      document.removeEventListener('mozfullscreenchange', syncFs);
+    };
+  }, []);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video || !currentMoment || ended) {
       return undefined;
@@ -71,6 +130,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
     const handleTimeUpdate = () => {
       if (!promptOpen && video.currentTime >= threshold) {
         video.pause();
+        setCorrectOnLeft(Math.random() < 0.5);
         setOverlayFading(false);
         setPromptOpen(true);
       }
@@ -94,6 +154,22 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
     const video = videoRef.current;
     if (video) {
       setDuration(video.duration);
+    }
+  }
+
+  async function handleToggleFullscreen() {
+    const root = fsRootRef.current;
+    if (!root) {
+      return;
+    }
+    try {
+      if (getFullscreenElement() === root) {
+        await exitFullscreen();
+      } else {
+        await requestContainerFullscreen(root);
+      }
+    } catch {
+      /* user denied or API unsupported */
     }
   }
 
@@ -131,10 +207,15 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
         video.currentTime = currentMoment.timestamp + 0.2;
         void video.play();
       }
-    }, 320);
+    }, 380);
   }
 
   const total = playableMoments.length;
+
+  const leftChoice = correctOnLeft ? ('correct' as const) : ('wrong' as const);
+  const rightChoice = correctOnLeft ? ('wrong' as const) : ('correct' as const);
+  const leftText = correctOnLeft ? currentMoment?.correct_option_text : currentMoment?.wrong_option_text;
+  const rightText = correctOnLeft ? currentMoment?.wrong_option_text : currentMoment?.correct_option_text;
 
   return (
     <div className="player-wrap">
@@ -149,39 +230,68 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
             </div>
             <span className="chip">{ended ? 'Video complete' : promptOpen ? 'Paused for quiz' : 'Playing ready'}</span>
           </div>
-          <div className="video-frame">
-            <video ref={videoRef} controls src={videoUrl} onLoadedMetadata={handleMetadataLoaded} />
-            {currentMoment && promptOpen ? (
-              <div className={`video-quiz-overlay ${overlayFading ? 'is-fading' : ''}`}>
-                <div className="video-quiz-overlay-card">
-                  <h3>What happens next?</h3>
-                  <p>
-                    Timestamp {formatSeconds(currentMoment.timestamp)}. Pick the most likely continuation before the
-                    video resumes.
-                  </p>
-                  <div className="option-grid video-quiz-overlay-options">
-                    <button
-                      className="option-button"
-                      data-choice="correct"
-                      onClick={() => resolveChoice('correct')}
-                      disabled={overlayFading}
-                    >
-                      <strong>Option A</strong>
-                      {currentMoment.correct_option_text}
-                    </button>
-                    <button
-                      className="option-button"
-                      data-choice="wrong"
-                      onClick={() => resolveChoice('wrong')}
-                      disabled={overlayFading}
-                    >
-                      <strong>Option B</strong>
-                      {currentMoment.wrong_option_text}
-                    </button>
+
+          <div className="video-frame video-frame-fs-root" ref={fsRootRef}>
+            <div className="video-stack">
+              <video
+                ref={videoRef}
+                controls
+                playsInline
+                controlsList="nofullscreen"
+                className="video-quiz-element"
+                src={videoUrl}
+                onLoadedMetadata={handleMetadataLoaded}
+              />
+
+              {currentMoment && promptOpen ? (
+                <div
+                  className={`video-quiz-overlay ${overlayFading ? 'is-fading' : ''}`}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="quiz-overlay-title"
+                >
+                  <div className="video-quiz-overlay-scrim" aria-hidden />
+                  <div className="video-quiz-overlay-card">
+                    <div className="video-quiz-overlay-header">
+                      <span className="video-quiz-overlay-badge">{formatSeconds(currentMoment.timestamp)}</span>
+                      <h3 id="quiz-overlay-title" className="video-quiz-overlay-title">
+                        What happens next?
+                      </h3>
+                      <p className="video-quiz-overlay-hint">Choose the outcome that matches the very next moment.</p>
+                    </div>
+                    <div className="video-quiz-overlay-options">
+                      <button
+                        type="button"
+                        className="video-quiz-option"
+                        data-slot="left"
+                        onClick={() => resolveChoice(leftChoice)}
+                        disabled={overlayFading}
+                      >
+                        <span className="video-quiz-option-label">Prediction 1</span>
+                        <span className="video-quiz-option-text">{leftText}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="video-quiz-option"
+                        data-slot="right"
+                        onClick={() => resolveChoice(rightChoice)}
+                        disabled={overlayFading}
+                      >
+                        <span className="video-quiz-option-label">Prediction 2</span>
+                        <span className="video-quiz-option-text">{rightText}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ) : null}
+              ) : null}
+            </div>
+
+            <div className="video-fs-bar">
+              <button type="button" className="button button-secondary video-fs-bar-btn" onClick={() => void handleToggleFullscreen()}>
+                {fsActive ? 'Exit full screen' : 'Full screen (quiz visible)'}
+              </button>
+              <span className="video-fs-bar-hint muted">Native video full screen hides the quiz — use this button.</span>
+            </div>
           </div>
         </div>
       </div>
@@ -202,7 +312,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
 
             <div className="notice">
               {currentMoment
-                ? `Choices appear as a top overlay at ${formatSeconds(currentMoment.timestamp)} and then fade away after your answer.`
+                ? 'The overlay appears over the player (and stays visible in full screen when you use the button below the video).'
                 : 'The quiz overlay appears automatically when the video reaches generated timestamps.'}
             </div>
 

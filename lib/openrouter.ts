@@ -20,24 +20,47 @@ function stripCodeFences(value: string) {
 }
 
 function buildPrompt(analysis: NormalizedVideoAnalysis) {
+  const durationLine =
+    typeof analysis.durationSeconds === 'number' && Number.isFinite(analysis.durationSeconds)
+      ? `Approximate video duration: ${analysis.durationSeconds.toFixed(2)} seconds. Only use timestamps within [0, duration].`
+      : 'Infer sensible timestamps in seconds from the cues below.';
+
+  const cuesBlock = analysis.cues
+    .map((cue) => `${cue.timestamp.toFixed(2)}s | ${cue.source} | ${cue.description}`)
+    .join('\n');
+
   return [
-    'You are generating prediction moments for a video quiz.',
-    'Return ONLY valid JSON with the shape [{"timestamp":number,"correct_option_text":string,"wrong_option_text":string}].',
-    'Rules:',
-    '- Use timestamps in seconds.',
-    '- Sort items by timestamp ascending.',
-    '- Choose moments where a viewer could reasonably predict what happens next.',
-    '- Keep each option concise and visually grounded.',
-    '- Make the wrong option plausible, not absurd.',
-    '- Do not include extra keys or markdown.',
+    'You are generating prediction moments for a video quiz. You receive the full timeline as cues (every timestamp the analysis extracted) plus transcript and visual summary.',
     '',
-    `Transcript: ${analysis.transcript}`,
+    'Return ONLY valid JSON: an array of objects, each exactly:',
+    '{"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
+    'No markdown, no code fences, no extra keys, no trailing commentary.',
+    '',
+    'Selection strategy:',
+    '- Review EVERY cue timestamp and the overall video context (transcript + visual summary + all cues).',
+    '- Keep only the MOST IMPORTANT moments for a quiz: where what happens next is genuinely hard to predict (branching, surprise, ambiguity, or a sharp turn—not obvious continuity).',
+    '- Skip redundant or low-stakes beats where the next action is obvious.',
+    '- Use a modest number of moments (roughly 3–10 unless the video is very long and rich in unpredictable beats).',
+    '- Sort the final array by timestamp ascending.',
+    '- Each timestamp must match a meaningful beat (typically aligned to or just before a cue you rely on).',
+    durationLine,
+    '',
+    'How to write each pair of options (critical):',
+    '- Describe ONLY what happens IMMEDIATELY after the pause point—roughly the next beat or second or two of action, not the whole scene.',
+    '- Do NOT refer to events that already happened before the pause (no "after they already…", "having just…").',
+    '- Do NOT refer to things that happen much later or at the end of the video.',
+    '- Phrase both options as forward-looking predictions: "Next, …" / "Right away, …" style, same tense and length.',
+    '- correct_option_text = what actually happens next in the video (per transcript/cues/summary).',
+    '- wrong_option_text = a different immediate outcome that did NOT happen.',
+    '- Matched believability: if the true next beat is ordinary and believable, the wrong option must be equally ordinary and believable (not cartoonish). If the true next beat is surprising or "out of the box", the wrong option must feel equally surprising or unconventional—not a boring filler.',
+    '- Do not make the wrong option absurd or sarcastic unless the correct one is equally extreme.',
+    '- Keep each option one or two short sentences, concrete and visual.',
+    '',
+    `Transcript:\n${analysis.transcript || '(none)'}`,
     '',
     `Visual summary:\n${analysis.visualSummary}`,
     '',
-    `Cues:\n${analysis.cues
-      .map((cue) => `${cue.timestamp.toFixed(2)}s | ${cue.source} | ${cue.description}`)
-      .join('\n')}`
+    `Cues (full timeline — use all when choosing moments and wording):\n${cuesBlock || '(none)'}`
   ].join('\n');
 }
 
@@ -69,14 +92,14 @@ export async function generateQuizMomentsFromOpenRouter(
     messages: [
       {
         role: 'system',
-        content: `You are a precise JSON generator for a ${videoName} video prediction game.`
+        content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
       },
       {
         role: 'user',
         content: buildPrompt(analysis)
       }
     ],
-    temperature: 0.3
+    temperature: 0.4
   };
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
