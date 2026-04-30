@@ -154,31 +154,26 @@ export async function loadPlaybackForEntry(item: SavedAnalysisEntry): Promise<Lo
   };
 }
 
-export async function removeSavedAnalysis(userId: string, item: SavedAnalysisEntry) {
-  const analysisPrefix = `${userId}/${item.analysisId}`;
-  const { data: videoFiles, error: listVideoError } = await supabase.storage.from('videos').list(analysisPrefix, {
-    limit: 100,
-    sortBy: { column: 'name', order: 'asc' }
-  });
+/**
+ * Deletes analysis artifacts from all three buckets via the API, using the
+ * service role on the server so Storage RLS does not need a DELETE policy.
+ */
+export async function removeSavedAnalysis(item: SavedAnalysisEntry) {
+  const { data, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
 
-  if (listVideoError) {
-    throw new Error(listVideoError.message);
+  if (sessionError || !accessToken) {
+    throw new Error('You must be logged in to delete saved videos.');
   }
 
-  const videoPathsToRemove = (videoFiles ?? [])
-    .filter((entry) => entry.name && !entry.name.endsWith('/'))
-    .map((entry) => `${analysisPrefix}/${entry.name}`);
+  const response = await fetch(`/api/analyses/${encodeURIComponent(item.analysisId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
 
-  const removals = await Promise.all([
-    videoPathsToRemove.length > 0
-      ? supabase.storage.from('videos').remove(videoPathsToRemove)
-      : Promise.resolve({ data: [], error: null }),
-    supabase.storage.from('questions').remove([item.questionsPath]),
-    supabase.storage.from('annotations').remove([item.annotationsPath])
-  ]);
+  const payload = (await response.json().catch(() => null)) as { error?: string } | null;
 
-  const firstError = removals.find((result) => result.error)?.error;
-  if (firstError) {
-    throw new Error(firstError.message);
+  if (!response.ok) {
+    throw new Error(payload?.error || `Delete failed (${response.status}).`);
   }
 }

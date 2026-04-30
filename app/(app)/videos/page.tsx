@@ -54,7 +54,7 @@ export default function VideosPage() {
     setToast(null);
 
     try {
-      await removeSavedAnalysis(userId, item);
+      await removeSavedAnalysis(item);
       setToast(`Deleted ${item.fileName}.`);
       await refresh();
     } catch (e) {
