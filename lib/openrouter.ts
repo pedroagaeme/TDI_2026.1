@@ -56,6 +56,7 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     '- wrong_option_text = a different immediate outcome that did NOT happen.',
     '- Matched believability: if the true next beat is ordinary and believable, the wrong option must be equally ordinary and believable (not cartoonish). If the true next beat is surprising or "out of the box", the wrong option must feel equally surprising or unconventional—not a boring filler.',
     '- Do not make the wrong option absurd or sarcastic unless the correct one is equally extreme.',
+    '- Use unambiguous character references. Do not refer to multiple people with the same label (for example, two different "the man"). If multiple similar people exist, distinguish them clearly (for example: "the woman in red", "the driver", "the child near the door") or use explicit names when available.',
     '- Keep each option one or two short sentences, concrete and visual.',
     '',
     `Transcript:\n${analysis.transcript || '(none)'}`,

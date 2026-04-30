@@ -326,8 +326,9 @@ input {
   z-index: 5;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  padding: 14px;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
   opacity: 1;
   transform: translateY(0);
   transition: opacity 260ms ease, transform 260ms ease;
@@ -341,7 +342,7 @@ input {
 .video-quiz-overlay-scrim {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, transparent 0%, transparent 28%, rgba(0, 0, 0, 0.45) 55%, rgba(0, 0, 0, 0.88) 100%);
+  background: radial-gradient(circle at center, rgba(4, 10, 20, 0.3) 0%, rgba(0, 0, 0, 0.72) 100%);
   pointer-events: none;
 }
 
