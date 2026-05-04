@@ -36,8 +36,11 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     '### SELECTION STRATEGY (CRITICAL)',
     '1. CORRELATE: Cross-reference the transcript sentiment with visual cues. Look for moments where the audio builds tension but the visual outcome is non-obvious.',
     '2. DIVISIVENESS: A moment is "divisive" if a viewer could reasonably argue for two different immediate outcomes. Avoid "dead-air" or obvious continuity.',
-    '3. DENSITY: Aim for ~5 moments per 6 minutes. Minimum 45s between moments. Start preference > 30s.',
+    '3. DENSITY: Aim for ~5 moments per 6 minutes. Minimum 15s between moments. Start preference > 30s.',
     '4. VERIFICATION: Ensure the "correct_option" is grounded in the cues immediately following the timestamp.',
+    '5. TIMESTAMPING: Use the onset of the event, not a reaction shot or aftermath. The chosen timestamp must be at most 10 seconds earlier than the first visible/audio cue for that event.',
+    '6. OMIT LATE MOMENTS: If the clearest event beat is only visible more than 10 seconds later, skip that moment.',
+    '7. SANITY CHECK: Before selecting a moment, verify that the event actually happens on screen and that both answer options still make sense when compared against the transcript, visual summary, and nearby cues. Skip moments that are ambiguous, speculative, or only reaction shots.',
     '',
     '### DATA TO ANALYZE',
     `Transcript:\n${analysis.transcript || '(none)'}`,
@@ -51,6 +54,8 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     '### OUTPUT FORMAT',
     'Return ONLY a valid JSON array. No conversational text. No code fences.',
     'Structure: {"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
+    'Timestamp rule: the timestamp must point to the start of the event and remain within 10 seconds of the actual event onset.',
+    'Verification rule: reject any event whose timing or meaning does not clearly match the transcript, visual summary, and cue sequence.',
     '',
     '### OPTION GUIDELINES',
     '- Both options must be forward-looking ("Next, the driver..." / "Immediately, the woman...").',
@@ -132,7 +137,10 @@ export async function generateQuizMomentsFromOpenRouter(
     throw new Error('OPENROUTER_API_KEY is required in strict API mode.');
   }
 
-  const model = 'anthropic/claude-opus-4.7';
+  const model = process.env.OPENROUTER_MODEL?.trim();
+  if (!model) {
+    throw new Error('OPENROUTER_MODEL is required in strict API mode.');
+  }
 
   const messages: Array<{ role: string; content: string }> = [
     {
