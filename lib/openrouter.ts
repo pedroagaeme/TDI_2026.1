@@ -55,7 +55,7 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     'Return ONLY a valid JSON array. No conversational text. No code fences.',
     'Structure: {"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
     'Timestamp rule: the timestamp must point to the start of the event and remain within 10 seconds of the actual event onset.',
-    'Verification rule: reject any event whose timing or meaning does not clearly match the transcript, visual summary, and cue sequence.',
+    'Verification rule: verify whether the timestamp matches what is actually happening at that time. If it does not, search second by second for the real timestamp. If you still cannot find it, reject the moment and try another one.',
     '',
     '### OPTION GUIDELINES',
     '- Both options must be forward-looking ("Next, the driver..." / "Immediately, the woman...").',
