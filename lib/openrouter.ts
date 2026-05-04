@@ -65,6 +65,56 @@ function parseMoments(rawContent: string): QuizMoment[] {
   return quizMomentsSchema.parse(parsed);
 }
 
+function pruneGoogleAnnotations(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
+  const a = raw as Record<string, any>;
+
+  const filterByConfidence = <T extends { confidence?: number }>(arr: T[] | undefined, threshold = 0.7) =>
+    arr?.filter((x) => (x.confidence ?? 1) >= threshold) ?? [];
+
+  const speechTranscriptions = (a.speechTranscriptions as any[])?.map((t: any) => ({
+    alternatives: t.alternatives?.slice(0, 1).map((alt: any) => ({
+      transcript: alt.transcript,
+      confidence: alt.confidence
+    }))
+  }));
+
+  const segmentLabelAnnotations = filterByConfidence(a.segmentLabelAnnotations as any[], 0.75).map((l: any) => ({
+    entity: l.entity,
+    segments: l.segments?.slice(0, 3)
+  }));
+
+  const shotAnnotations = (a.shotAnnotations as any[])?.map((s: any) => ({
+    startTimeOffset: s.startTimeOffset,
+    endTimeOffset: s.endTimeOffset
+  }));
+
+  const objectAnnotations = filterByConfidence(a.objectAnnotations as any[], 0.8).map((o: any) => ({
+    entity: o.entity,
+    confidence: o.confidence,
+    segment: o.segment
+  }));
+
+  const explicitAnnotation = {
+    frames:
+      (a.explicitAnnotation as any)?.frames?.filter(
+        (f: any) => f.pornographyLikelihood !== 'VERY_UNLIKELY' && f.pornographyLikelihood !== 'UNLIKELY'
+      ) ?? []
+  };
+
+  return {
+    speechTranscriptions,
+    segmentLabelAnnotations,
+    shotAnnotations,
+    objectAnnotations,
+    explicitAnnotation
+  };
+}
+
+function estimateTokens(text: string) {
+  return Math.ceil(text.length / 4);
+}
+
 export interface OpenRouterQuizGenerationResult {
   quizMoments: QuizMoment[];
   rawContent: string;
@@ -97,16 +147,17 @@ export async function generateQuizMomentsFromOpenRouter(
 
   if (googleAnnotations) {
     try {
+      const pruned = pruneGoogleAnnotations(googleAnnotations);
       messages.push({
         role: 'user',
-        content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(googleAnnotations, null, 2)}`
+        content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(pruned)}`
       });
     } catch (e) {
       messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
     }
   }
 
-  const body = {
+  let body: any = {
     model,
     messages,
     temperature: 0.0,
@@ -115,6 +166,22 @@ export async function generateQuizMomentsFromOpenRouter(
     },
     verbosity: 'max'
   };
+
+  // Pre-flight token estimation to avoid sending payloads that exceed limits.
+  const bodyString = JSON.stringify(body);
+  const estimatedTokens = estimateTokens(bodyString);
+  const TOKEN_LIMIT = parseInt(process.env.OPENROUTER_TOKEN_LIMIT || '900000', 10);
+  if (estimatedTokens > TOKEN_LIMIT) {
+    // If configured, let OpenRouter attempt context compression as a last resort.
+    if (process.env.OPENROUTER_USE_COMPRESSION === '1') {
+      body.plugins = [{ id: 'context-compression' }];
+    } else {
+      throw new Error(
+        `Payload too large: ~${estimatedTokens.toLocaleString()} estimated tokens (limit ${TOKEN_LIMIT.toLocaleString()}). ` +
+          `Prune googleAnnotations before sending or enable OPENROUTER_USE_COMPRESSION.`
+      );
+    }
+  }
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
