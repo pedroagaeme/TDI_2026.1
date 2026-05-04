@@ -80,6 +80,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
   }, [duration, quizMoments]);
 
   const currentMoment = playableMoments[currentIndex];
+  const currentMomentOffset = currentMoment ? getQuizOffsetTime(currentMoment.timestamp) : null;
   const score = answers.filter((answer) => answer.isCorrect).length;
 
   useEffect(() => {
@@ -257,7 +258,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
                   <div className="video-quiz-overlay-scrim" aria-hidden />
                   <div className="video-quiz-overlay-card">
                     <div className="video-quiz-overlay-header">
-                      <span className="video-quiz-overlay-badge">{formatSeconds(currentMoment.timestamp)}</span>
+                      <span className="video-quiz-overlay-badge">{formatSeconds(currentMomentOffset ?? currentMoment.timestamp)}</span>
                       <h3 id="quiz-overlay-title" className="video-quiz-overlay-title">
                         What happens next?
                       </h3>
@@ -307,7 +308,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
               <h3 className="panel-heading">What happens next?</h3>
               <p className="quiz-prompt">
                 {currentMoment
-                  ? `Pause at ${formatSeconds(currentMoment.timestamp)} and choose the most likely continuation.`
+                  ? `Pause at ${formatSeconds(currentMomentOffset ?? currentMoment.timestamp)} and choose the most likely continuation.`
                   : ended
                     ? 'No more moments remain. Review your score below.'
                     : 'Load a video to start the prediction quiz.'}
