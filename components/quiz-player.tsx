@@ -16,6 +16,10 @@ function formatSeconds(value: number) {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
+function getQuizOffsetTime(timestamp: number) {
+  return Math.max(0, timestamp - 10);
+}
+
 function getFullscreenElement(): Element | null {
   const doc = document as Document & {
     webkitFullscreenElement?: Element | null;
@@ -125,7 +129,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
       return undefined;
     }
 
-    const threshold = Math.max(0, currentMoment.timestamp - 0.35);
+    const threshold = getQuizOffsetTime(currentMoment.timestamp);
 
     const handleTimeUpdate = () => {
       if (!promptOpen && video.currentTime >= threshold) {
@@ -204,7 +208,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
       setCurrentIndex((value) => value + 1);
 
       if (video) {
-        video.currentTime = currentMoment.timestamp + 0.2;
+        video.currentTime = getQuizOffsetTime(currentMoment.timestamp);
         void video.play();
       }
     }, 380);
