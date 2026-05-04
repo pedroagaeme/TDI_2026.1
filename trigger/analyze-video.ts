@@ -36,7 +36,12 @@ export const analyzeVideoTask = task({
 
     const videoBuffer = Buffer.from(await videoData.arrayBuffer());
     const analysis = await analyzeVideoBytesWithGoogle(videoBuffer, payload.fileName);
-    const quizGeneration = await generateQuizMomentsFromOpenRouter(analysis, payload.fileName);
+    const quizGeneration = await generateQuizMomentsFromOpenRouter(
+      analysis,
+      payload.fileName,
+      videoBuffer,
+      analysis.rawGoogleResponse
+    );
 
     const storedAt = new Date().toISOString();
     const annotationPath = `${payload.accountId}/${payload.analysisId}/google-annotations.json`;

@@ -74,27 +74,51 @@ export interface OpenRouterQuizGenerationResult {
 
 export async function generateQuizMomentsFromOpenRouter(
   analysis: NormalizedVideoAnalysis,
-  videoName: string
+  videoName: string,
+  videoBuffer?: Buffer,
+  googleAnnotations?: unknown
 ): Promise<OpenRouterQuizGenerationResult> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY is required in strict API mode.');
   }
 
-  const model = process.env.OPENROUTER_MODEL || 'openai/gpt-4o-mini';
+  const model = 'Google: Gemini 3.1 Pro Preview';
+  const messages: Array<{ role: string; content: string }> = [
+    {
+      role: 'system',
+      content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
+    },
+    {
+      role: 'user',
+      content: buildPrompt(analysis)
+    }
+  ];
+
+  if (googleAnnotations) {
+    try {
+      messages.push({
+        role: 'user',
+        content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(googleAnnotations, null, 2)}`
+      });
+    } catch (e) {
+      messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
+    }
+  }
+
+  if (videoBuffer && videoBuffer.length > 0) {
+    const maxBytes = 200_000; // truncate large videos to avoid excessively large requests
+    const prefix = videoBuffer.slice(0, maxBytes).toString('base64');
+    messages.push({
+      role: 'user',
+      content: `VIDEO_ATTACHMENT_METADATA:\nsize_bytes: ${videoBuffer.length}\nbase64_prefix_truncated_to_bytes: ${Math.min(maxBytes, videoBuffer.length)}\nbase64_prefix: ${prefix}`
+    });
+  }
+
   const body = {
     model,
-    messages: [
-      {
-        role: 'system',
-        content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
-      },
-      {
-        role: 'user',
-        content: buildPrompt(analysis)
-      }
-    ],
-    temperature: 0.4
+    messages,
+    temperature: 0.0
   };
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
