@@ -75,7 +75,6 @@ export interface OpenRouterQuizGenerationResult {
 export async function generateQuizMomentsFromOpenRouter(
   analysis: NormalizedVideoAnalysis,
   videoName: string,
-  videoBuffer?: Buffer,
   googleAnnotations?: unknown
 ): Promise<OpenRouterQuizGenerationResult> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
@@ -104,15 +103,6 @@ export async function generateQuizMomentsFromOpenRouter(
     } catch (e) {
       messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
     }
-  }
-
-  if (videoBuffer && videoBuffer.length > 0) {
-    const maxBytes = 200_000; // truncate large videos to avoid excessively large requests
-    const prefix = videoBuffer.slice(0, maxBytes).toString('base64');
-    messages.push({
-      role: 'user',
-      content: `VIDEO_ATTACHMENT_METADATA:\nsize_bytes: ${videoBuffer.length}\nbase64_prefix_truncated_to_bytes: ${Math.min(maxBytes, videoBuffer.length)}\nbase64_prefix: ${prefix}`
-    });
   }
 
   const body = {

@@ -39,7 +39,6 @@ export const analyzeVideoTask = task({
     const quizGeneration = await generateQuizMomentsFromOpenRouter(
       analysis,
       payload.fileName,
-      videoBuffer,
       analysis.rawGoogleResponse
     );
 
