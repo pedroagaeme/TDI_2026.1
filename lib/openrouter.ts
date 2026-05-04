@@ -83,7 +83,7 @@ export async function generateQuizMomentsFromOpenRouter(
     throw new Error('OPENROUTER_API_KEY is required in strict API mode.');
   }
 
-  const model = 'Google: Gemini 3.1 Pro Preview';
+  const model = 'google/gemini-3.1-pro-preview';
   const messages: Array<{ role: string; content: string }> = [
     {
       role: 'system',
