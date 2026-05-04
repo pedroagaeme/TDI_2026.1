@@ -82,7 +82,8 @@ export async function generateQuizMomentsFromOpenRouter(
     throw new Error('OPENROUTER_API_KEY is required in strict API mode.');
   }
 
-  const model = 'google/gemini-3.1-pro-preview';
+  const model = 'anthropic/claude-opus-4.7';
+
   const messages: Array<{ role: string; content: string }> = [
     {
       role: 'system',
@@ -108,7 +109,11 @@ export async function generateQuizMomentsFromOpenRouter(
   const body = {
     model,
     messages,
-    temperature: 0.0
+    temperature: 0.0,
+    reasoning: {
+      enabled: true
+    },
+    verbosity: 'max'
   };
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
