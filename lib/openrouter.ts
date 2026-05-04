@@ -67,6 +67,10 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
 function parseMoments(rawContent: string): QuizMoment[] {
   const cleaned = stripCodeFences(rawContent);
   const parsed = JSON.parse(cleaned) as unknown;
+  // If the model returns an empty array (no moments passed verification), return it gracefully.
+  if (Array.isArray(parsed) && parsed.length === 0) {
+    return [];
+  }
   return quizMomentsSchema.parse(parsed);
 }
 
