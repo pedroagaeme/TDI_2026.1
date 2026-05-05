@@ -228,12 +228,12 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
         <div className="panel-inner stack">
           <div className="quiz-header">
             <div>
-              <h2 className="panel-heading">Playback and prompts</h2>
+              <h2 className="panel-heading">Reprodução e Perguntas</h2>
               <div className="muted">
-                {total} prediction moment{total === 1 ? '' : 's'} · score {score}/{answers.length || total || 1}
+                {total} momento{total === 1 ? '' : 's'} de previsão · pontuação {score}/{answers.length || total || 1}
               </div>
             </div>
-            <span className="chip">{ended ? 'Video complete' : promptOpen ? 'Paused for quiz' : 'Playing ready'}</span>
+            <span className="chip">{ended ? 'Vídeo concluído' : promptOpen ? 'Pausado para pergunta' : 'Pronto para reprodução'}</span>
           </div>
 
           <div className="video-frame video-frame-fs-root" ref={fsRootRef}>
@@ -260,9 +260,9 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
                     <div className="video-quiz-overlay-header">
                       <span className="video-quiz-overlay-badge">{formatSeconds(currentMomentOffset ?? currentMoment.timestamp)}</span>
                       <h3 id="quiz-overlay-title" className="video-quiz-overlay-title">
-                        What happens next?
+                        O que acontece a seguir?
                       </h3>
-                      <p className="video-quiz-overlay-hint">Choose the outcome that matches the very next moment.</p>
+                      <p className="video-quiz-overlay-hint">Escolha o desfecho que corresponde ao próximo momento.</p>
                     </div>
                     <div className="video-quiz-overlay-options">
                       <button
@@ -272,7 +272,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
                         onClick={() => resolveChoice(leftChoice)}
                         disabled={overlayFading}
                       >
-                        <span className="video-quiz-option-label">Prediction 1</span>
+                        <span className="video-quiz-option-label">Previsão 1</span>
                         <span className="video-quiz-option-text">{leftText}</span>
                       </button>
                       <button
@@ -282,7 +282,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
                         onClick={() => resolveChoice(rightChoice)}
                         disabled={overlayFading}
                       >
-                        <span className="video-quiz-option-label">Prediction 2</span>
+                        <span className="video-quiz-option-label">Previsão 2</span>
                         <span className="video-quiz-option-text">{rightText}</span>
                       </button>
                     </div>
@@ -293,7 +293,7 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
 
             <div className="video-fs-bar">
               <button type="button" className="button button-secondary video-fs-bar-btn" onClick={() => void handleToggleFullscreen()}>
-                {fsActive ? 'Exit full screen' : 'Full screen (quiz visible)'}
+                {fsActive ? 'Sair da tela cheia' : 'Tela cheia (quiz visível)'}
               </button>
               <span className="video-fs-bar-hint muted">Native video full screen hides the quiz — use this button.</span>
             </div>
@@ -305,13 +305,13 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
         <div className="panel">
           <div className="panel-inner quiz-card">
             <div>
-              <h3 className="panel-heading">What happens next?</h3>
+              <h3 className="panel-heading">O que acontece a seguir?</h3>
               <p className="quiz-prompt">
                 {currentMoment
-                  ? `Pause at ${formatSeconds(currentMomentOffset ?? currentMoment.timestamp)} and choose the most likely continuation.`
+                  ? `Pausar em ${formatSeconds(currentMomentOffset ?? currentMoment.timestamp)} e escolha a continuação mais provável.`
                   : ended
-                    ? 'No more moments remain. Review your score below.'
-                    : 'Load a video to start the prediction quiz.'}
+                    ? 'Nenhum momento restante. Revise sua pontuação abaixo.'
+                    : 'Carregue um vídeo para iniciar o quiz de previsão.'}
               </p>
             </div>
 
@@ -321,14 +321,14 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
                 : 'The quiz overlay appears automatically when the video reaches generated timestamps.'}
             </div>
 
-            {lastChoice ? <div className="notice notice-success">Last answer recorded: {lastChoice}</div> : null}
+              {lastChoice ? <div className="notice notice-success">Última resposta registrada: {lastChoice}</div> : null}
           </div>
         </div>
 
         <div className="panel">
           <div className="panel-inner stack">
             <div>
-              <h3 className="panel-heading">Analysis summary</h3>
+              <h3 className="panel-heading">Resumo da análise</h3>
               <p className="muted" style={{ lineHeight: 1.65, margin: 0 }}>
                 {analysisSummary}
               </p>
@@ -336,24 +336,24 @@ export function QuizPlayer({ videoUrl, quizMoments, analysisSummary }: QuizPlaye
 
             <div className="score-grid">
               <div className="score-card">
-                Total prompts
+                Total de perguntas
                 <span className="score-value">{total}</span>
               </div>
               <div className="score-card">
-                Correct
+                Corretas
                 <span className="score-value">{score}</span>
               </div>
               <div className="score-card">
-                Accuracy
+                Precisão
                 <span className="score-value">{total ? Math.round((score / total) * 100) : 0}%</span>
               </div>
             </div>
 
             <div>
-              <h3 className="panel-heading">Results</h3>
+                <h3 className="panel-heading">Resultados</h3>
               <div className="result-list">
                 {answers.length === 0 ? (
-                  <div className="notice">No answers recorded yet.</div>
+                  <div className="notice">Nenhuma resposta registrada ainda.</div>
                 ) : (
                   answers.map((answer) => (
                     <div className="result-row" key={`${answer.timestamp}-${answer.selected}`}>
