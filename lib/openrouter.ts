@@ -30,37 +30,37 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     .join('\n');
 
   return [
-    '### TAREFA',
-    'Atue como um mecanismo de raciocínio multimodal. Analise os metadados do vídeo fornecidos (Transcrição + Resumo Visual + Pistas) para identificar "Momentos de Previsão Divisiva" de alta tensão.',
+    '### TASK',
+    'Act as a Multimodal Reasoning Engine. Analyze the provided video metadata (Transcript + Visual Summary + Cues) to identify high-tension "Divisive Prediction Moments".',
     '',
-    '### ESTRATÉGIA DE SELEÇÃO (CRÍTICO)',
-    '1. CORRELACIONAR: Correlacione a transcrição com as pistas visuais. Procure momentos em que o áudio gera tensão e o resultado visual não é óbvio.',
-    '2. DIVISIVIDADE: Um momento é "divisivo" se um espectador pudesse razoavelmente argumentar por duas saídas imediatas. Evite "silêncio" ou continuidade óbvia.',
-    '3. DENSIDADE: Mire em ~5 momentos por 6 minutos. Mínimo de 15s entre momentos. Preferência para início > 30s.',
-    '4. VERIFICAÇÃO: Garanta que a `correct_option` esteja fundamentada nas pistas imediatamente após o timestamp.',
-    '5. MARCAÇÃO DE TEMPO: Use o início do evento, não uma tomada de reação ou consequência. O timestamp escolhido deve ser, no máximo, 10 segundos anterior à primeira pista visível/áudio desse evento.',
-    '6. OMITIR MOMENTOS TARDIOS: Se o pulso de evento mais claro só for visível mais de 10 segundos depois, pule esse momento.',
-    '7. CHECAGEM DE SANIDADE: Antes de selecionar um momento, verifique se o evento realmente acontece na tela e se ambas as opções fazem sentido quando comparadas à transcrição, ao resumo visual e às pistas próximas. Pule momentos ambíguos, especulativos ou apenas de reação.',
+    '### SELECTION STRATEGY (CRITICAL)',
+    '1. CORRELATE: Cross-reference the transcript sentiment with visual cues. Look for moments where the audio builds tension but the visual outcome is non-obvious.',
+    '2. DIVISIVENESS: A moment is "divisive" if a viewer could reasonably argue for two different immediate outcomes. Avoid "dead-air" or obvious continuity.',
+    '3. DENSITY: Aim for ~5 moments per 6 minutes. Minimum 15s between moments. Start preference > 30s.',
+    '4. VERIFICATION: Ensure the "correct_option" is grounded in the cues immediately following the timestamp.',
+    '5. TIMESTAMPING: Use the onset of the event, not a reaction shot or aftermath. The chosen timestamp must be at most 10 seconds earlier than the first visible/audio cue for that event.',
+    '6. OMIT LATE MOMENTS: If the clearest event beat is only visible more than 10 seconds later, skip that moment.',
+    '7. SANITY CHECK: Before selecting a moment, verify that the event actually happens on screen and that both answer options still make sense when compared against the transcript, visual summary, and nearby cues. Skip moments that are ambiguous, speculative, or only reaction shots.',
     '',
-    '### DADOS A ANALISAR',
-    `Transcrição:\n${analysis.transcript || '(nenhuma)'}`,
+    '### DATA TO ANALYZE',
+    `Transcript:\n${analysis.transcript || '(none)'}`,
     '',
-    `Resumo Visual:\n${analysis.visualSummary}`,
+    `Visual Summary:\n${analysis.visualSummary}`,
     '',
-    `Linha do Tempo:\n${cuesBlock || '(nenhuma)'}`,
+    `Timeline Cues:\n${cuesBlock || '(none)'}`,
     '',
     `Constraints: ${durationLine}`,
     '',
-    '### FORMATO DE SAÍDA',
-    'Retorne APENAS um array JSON válido. Sem texto de conversação. Sem blocos de código.',
-    'Estrutura: {"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
-    'Regra de timestamp: o timestamp deve apontar para o início do evento e permanecer dentro de 10 segundos do início real do evento.',
-    'Regra de verificação: verifique se o timestamp corresponde ao que realmente acontece naquele momento. Se não corresponder, busque segundo a segundo pelo timestamp real. Se ainda não encontrar, rejeite o momento e tente outro.',
+    '### OUTPUT FORMAT',
+    'Return ONLY a valid JSON array. No conversational text. No code fences.',
+    'Structure: {"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
+    'Timestamp rule: the timestamp must point to the start of the event and remain within 10 seconds of the actual event onset.',
+    'Verification rule: verify whether the timestamp matches what is actually happening at that time. If it does not, search second by second for the real timestamp. If you still cannot find it, reject the moment and try another one.',
     '',
-    '### DIRETRIZES DE OPÇÕES',
-    '- Ambas as opções devem ser orientadas para o futuro ("Em seguida, o motorista..." / "Imediatamente, a mulher...").',
-    '- A "wrong_option" deve ser uma Alternativa Crível: ela deve espelhar o tom, a complexidade e o vocabulário do evento correto.',
-    '- Se o evento real for uma surpresa, o evento falso também deve ser uma surpresa plausível.'
+    '### OPTION GUIDELINES',
+    '- Both options must be forward-looking ("Next, the driver..." / "Immediately, the woman...").',
+    '- The "wrong_option" must be a "Believable Alternative": it should mirror the tone, complexity, and vocabulary of the correct event.',
+    '- If the real event is a surprise, the fake event must also be a plausible surprise.'
   ].join('\n');
 }
 
@@ -149,7 +149,7 @@ export async function generateQuizMomentsFromOpenRouter(
   const messages: Array<{ role: string; content: string }> = [
     {
       role: 'system',
-      content: `Você é um gerador preciso de JSON para um quiz de previsão de vídeo sobre o arquivo "${videoName}". Siga as instruções do usuário exatamente e retorne apenas arrays JSON válidos. Responda em Português (pt-BR).`
+      content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
     },
     {
       role: 'user',
