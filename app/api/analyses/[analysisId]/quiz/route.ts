@@ -7,46 +7,28 @@ export const runtime = 'nodejs';
 
 const ANALYSIS_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-type StoredQuestionsPayload = {
-  fileName?: string;
-  quizMoments?: QuizMoment[];
-  savedAt?: string;
-  analysisSummary?: string;
-  rawContent?: string;
-  rawResponse?: unknown;
-  model?: string;
-  recalibratedAt?: string;
-};
+export async function GET(request: Request, context: { params: { analysisId: string } }) {
+  const { searchParams } = new URL(request.url);
+  const accountId = sanitizeAccountId(searchParams.get('accountId') || '');
 
-type StoredAnnotationsPayload = {
-  fileName?: string;
-  savedAt?: string;
-  // Recalibration endpoint removed per user request. Only GET (read) is supported for saved quiz payloads.
-    );
+  if (!accountId) {
+    return NextResponse.json({ error: 'accountId query parameter is required.' }, { status: 400 });
+  }
 
-    if (!recalibration.quizMoments.length) {
-      return NextResponse.json({ error: 'OpenRouter did not return any quiz moments during recalibration.' }, { status: 502 });
+  try {
+    const manifest = await readManifest(accountId, context.params.analysisId);
+    const openRouterText = await readFile(manifest.openRouterResponsePath, 'utf8');
+    const openRouterPayload = JSON.parse(openRouterText) as { quizMoments?: AnalyzeApiResponse['quizMoments'] };
+
+    if (!openRouterPayload.quizMoments?.length) {
+      return NextResponse.json({ error: 'Saved quiz moments were not found for this analysis.' }, { status: 404 });
     }
 
-    const savedAt = new Date().toISOString();
-    const updatedQuestionsPayload: StoredQuestionsPayload = {
-      ...questionsPayload,
-      fileName,
-      quizMoments: recalibration.quizMoments,
-      model: recalibration.model,
-      rawContent: recalibration.rawContent,
-      rawResponse: recalibration.rawResponse,
-      savedAt,
-      recalibratedAt: savedAt
-    };
-
-    await uploadJson(admin, 'questions', questionsPath, updatedQuestionsPayload);
-
     const response: AnalyzeApiResponse = {
-      analysisId,
-      quizMoments: recalibration.quizMoments,
-      analysisSummary: analysis.visualSummary,
-      sourceLabel: analysis.sourceLabel
+      analysisId: manifest.analysisId,
+      quizMoments: openRouterPayload.quizMoments,
+      analysisSummary: manifest.analysisSummary,
+      sourceLabel: manifest.sourceLabel
     };
 
     return NextResponse.json(response, {
@@ -54,9 +36,7 @@ type StoredAnnotationsPayload = {
         'Cache-Control': 'no-store'
       }
     });
-  } catch (error) {
-    const message = (error as Error).message || 'Failed to recalibrate quiz timestamps.';
-    console.error('[POST /api/analyses/[analysisId]/quiz]', message);
-    return NextResponse.json({ error: message }, { status: 500 });
+  } catch {
+    return NextResponse.json({ error: 'Saved analysis was not found for this account.' }, { status: 404 });
   }
 }

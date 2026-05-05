@@ -48,24 +48,22 @@ function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGeneration
     'Act as a Multimodal Reasoning Engine. Analyze the provided video metadata (Transcript + Visual Summary + Cues) to identify high-tension "Divisive Prediction Moments".',
     '',
     '### SELECTION STRATEGY (CRITICAL)',
-    '1. UNDENIABILITY: Prefer timestamps placed at the earliest moment the described action is undeniably occurring on-screen. Do not timestamp based on inference or implication — only pick moments supported by direct observable evidence.',
+    '1. CORRELATE: Cross-reference the transcript sentiment with visual cues. Look for moments where the audio builds tension but the visual outcome is non-obvious.',
     '2. DIVISIVENESS: A moment is "divisive" if a viewer could reasonably argue for two different immediate outcomes. Avoid "dead-air" or obvious continuity.',
     '3. DENSITY: Aim for ~5 moments per 6 minutes. Minimum 15s between moments. Start preference > 30s.',
-    '4. VERIFICATION: Ensure the "correct_option" is grounded in observable evidence immediately at or after the timestamp (visual frame-level or transcript cue).',
-    '5. TIMESTAMPING: Use the earliest frame/time where the action described is undeniably happening (not a reaction or aftermath). The chosen timestamp must be at most 10 seconds earlier than the first undeniable indicator of that action.',
-    '6. OMIT LATE MOMENTS: If the clearest event beat is only visible or undeniably identifiable more than 10 seconds later, skip that moment.',
-    '7. SANITY CHECK: Before selecting a moment, verify that the action clearly occurs on screen and that both answer options still make sense when compared against the transcript and visual summary. Prioritize direct observable evidence over inference; skip ambiguous or speculative moments.',
+    '4. VERIFICATION: Ensure the "correct_option" is grounded in the cues immediately following the timestamp.',
+    '5. TIMESTAMPING: Use the onset of the event, not a reaction shot or aftermath. The chosen timestamp must be at most 10 seconds earlier than the first visible/audio cue for that event.',
+    '6. OMIT LATE MOMENTS: If the clearest event beat is only visible more than 10 seconds later, skip that moment.',
+    '7. SANITY CHECK: Before selecting a moment, verify that the event actually happens on screen and that both answer options still make sense when compared against the transcript, visual summary, and nearby cues. Skip moments that are ambiguous, speculative, or only reaction shots.',
     '',
     options?.recalibrate ? '### RECALIBRATION MODE' : '',
     options?.recalibrate
-      ? 'These quiz moments already exist. Re-evaluate every timestamp so it lands at the earliest moment the described action is undeniably occurring, but remain as close as possible to the action onset. Preserve chronological order and do not let the next moment begin until the previous event has clearly ended.'
+      ? 'These quiz moments already exist. Re-evaluate every timestamp so it lands earlier than the event but as close as possible to the event onset. Preserve chronological order and do not let the next moment begin until the previous event has clearly ended.'
       : '',
     options?.recalibrate && options.priorMoments?.length
       ? `Current quiz moments to recalibrate:\n${formatPriorMoments(options.priorMoments)}`
       : '',
-    options?.recalibrate
-      ? 'When recalibrating, preserve the time range (start and end) that defines each event where available or infer a reasonable range. Schedule recalibrated timestamps so they never fall inside another event\'s time range. If ranges would overlap, adjust the later moment forward (and only as much as needed) to keep all timestamps outside other events\' ranges while staying within their own event range when possible.'
-      : '',
+    options?.recalibrate ? 'If two moments would overlap, prefer the earlier event that is safest to verify and move the later one forward only if needed to keep the timeline non-overlapping.' : '',
     '',
     '### DATA TO ANALYZE',
     `Transcript:\n${analysis.transcript || '(none)'}`,
@@ -79,7 +77,7 @@ function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGeneration
     '### OUTPUT FORMAT',
     'Return ONLY a valid JSON array. No conversational text. No code fences.',
     'Structure: {"timestamp": number, "correct_option_text": string, "wrong_option_text": string}',
-    'Timestamp rule: the timestamp must point to the earliest moment when the described action is undeniably occurring; it should remain within 10 seconds of that undeniable onset.',
+    'Timestamp rule: the timestamp must point to the start of the event and remain within 10 seconds of the actual event onset.',
     'Verification rule: verify whether the timestamp matches what is actually happening at that time. If it does not, search second by second for the real timestamp. If you still cannot find it, reject the moment and try another one.',
     '',
     '### OPTION GUIDELINES',
