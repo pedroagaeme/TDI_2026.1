@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { QuizPlayer } from '@/components/quiz-player';
 import { useAuth } from '@/components/providers/auth-provider';
-import { getSavedAnalysisById, loadPlaybackForEntry } from '@/lib/saved-analysis';
+import { getSavedAnalysisById, loadPlaybackForEntry, recalibrateSavedAnalysisQuizMoments } from '@/lib/saved-analysis';
 import type { QuizMoment } from '@/lib/types';
 
 export default function PlayQuizPage() {
@@ -21,6 +21,9 @@ export default function PlayQuizPage() {
     analysisSummary: string;
   } | null>(null);
   const [quizMoments, setQuizMoments] = useState<QuizMoment[]>([]);
+  const [recalibrating, setRecalibrating] = useState(false);
+  const [recalibrationMessage, setRecalibrationMessage] = useState<string | null>(null);
+  const [recalibrationError, setRecalibrationError] = useState<string | null>(null);
 
   const revokeVideoUrl = useCallback(() => {
     const url = videoUrlRef.current;
@@ -101,6 +104,34 @@ export default function PlayQuizPage() {
     };
   }, [userId, analysisId, revokeVideoUrl]);
 
+  const handleRecalibrate = useCallback(async () => {
+    if (!analysisId || !playback || quizMoments.length === 0) {
+      return;
+    }
+
+    setRecalibrating(true);
+    setRecalibrationError(null);
+    setRecalibrationMessage(null);
+
+    try {
+      const updated = await recalibrateSavedAnalysisQuizMoments(analysisId);
+      setQuizMoments(updated.quizMoments);
+      setPlayback((currentPlayback) =>
+        currentPlayback
+          ? {
+              ...currentPlayback,
+              analysisSummary: updated.analysisSummary
+            }
+          : currentPlayback
+      );
+      setRecalibrationMessage('Timestamps recalibrated successfully.');
+    } catch (e) {
+      setRecalibrationError((e as Error).message);
+    } finally {
+      setRecalibrating(false);
+    }
+  }, [analysisId, playback, quizMoments.length]);
+
   return (
     <div className="flow-stack" style={{ maxWidth: 960 }}>
       <Link href="/videos" className="flow-back">
@@ -140,15 +171,39 @@ export default function PlayQuizPage() {
       ) : null}
 
       {!loading && !error && playback && quizMoments.length > 0 ? (
-        <div className="panel">
-          <div className="panel-inner stack">
-            <QuizPlayer
-              videoUrl={playback.videoUrl}
-              quizMoments={quizMoments}
-              analysisSummary={playback.analysisSummary}
-            />
+        <>
+          <div className="panel">
+            <div className="panel-inner stack">
+              <div className="quiz-header">
+                <div>
+                  <h2 className="panel-heading">Timestamp recalibration</h2>
+                  <div className="muted">Send the analysis back to OpenRouter so the quiz timestamps shift earlier and stay non-overlapping.</div>
+                </div>
+                <button
+                  type="button"
+                  className="button button-secondary"
+                  onClick={() => void handleRecalibrate()}
+                  disabled={recalibrating}
+                >
+                  {recalibrating ? 'Recalibrating…' : 'Recalibrate timestamps'}
+                </button>
+              </div>
+
+              {recalibrationMessage ? <div className="notice notice-success">{recalibrationMessage}</div> : null}
+              {recalibrationError ? <div className="notice notice-error">{recalibrationError}</div> : null}
+            </div>
           </div>
-        </div>
+
+          <div className="panel">
+            <div className="panel-inner stack">
+              <QuizPlayer
+                videoUrl={playback.videoUrl}
+                quizMoments={quizMoments}
+                analysisSummary={playback.analysisSummary}
+              />
+            </div>
+          </div>
+        </>
       ) : null}
     </div>
   );

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase-client';
-import type { QuizMoment } from '@/lib/types';
+import type { AnalyzeApiResponse, QuizMoment } from '@/lib/types';
 
 export type SavedAnalysisEntry = {
   analysisId: string;
@@ -176,4 +176,28 @@ export async function removeSavedAnalysis(item: SavedAnalysisEntry) {
   if (!response.ok) {
     throw new Error(payload?.error || `Delete failed (${response.status}).`);
   }
+}
+
+export async function recalibrateSavedAnalysisQuizMoments(analysisId: string): Promise<AnalyzeApiResponse> {
+  const { data, error: sessionError } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+
+  if (sessionError || !accessToken) {
+    throw new Error('You must be logged in to recalibrate quiz timestamps.');
+  }
+
+  const response = await fetch(`/api/analyses/${encodeURIComponent(analysisId)}/quiz`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  const payload = (await response.json().catch(() => null)) as { error?: string } & AnalyzeApiResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error || `Recalibration failed (${response.status}).`);
+  }
+
+  return payload as AnalyzeApiResponse;
 }

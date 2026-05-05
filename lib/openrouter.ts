@@ -2,6 +2,11 @@ import { z } from 'zod';
 import type { NormalizedVideoAnalysis, QuizMoment } from '@/lib/types';
 import { quizMomentsSchema } from '@/lib/types';
 
+export interface QuizGenerationOptions {
+  recalibrate?: boolean;
+  priorMoments?: QuizMoment[];
+}
+
 const openRouterSchema = z.object({
   choices: z
     .array(
@@ -19,7 +24,16 @@ function stripCodeFences(value: string) {
   return match ? match[1].trim() : value.trim();
 }
 
-function buildPrompt(analysis: NormalizedVideoAnalysis) {
+function formatPriorMoments(priorMoments: QuizMoment[]) {
+  return priorMoments
+    .map(
+      (moment, index) =>
+        `${index + 1}. ${moment.timestamp.toFixed(2)}s | correct: ${moment.correct_option_text} | wrong: ${moment.wrong_option_text}`
+    )
+    .join('\n');
+}
+
+function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGenerationOptions) {
   const durationLine =
     typeof analysis.durationSeconds === 'number' && Number.isFinite(analysis.durationSeconds)
       ? `Approximate video duration: ${analysis.durationSeconds.toFixed(2)} seconds. Only use timestamps within [0, duration].`
@@ -41,6 +55,15 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
     '5. TIMESTAMPING: Use the onset of the event, not a reaction shot or aftermath. The chosen timestamp must be at most 10 seconds earlier than the first visible/audio cue for that event.',
     '6. OMIT LATE MOMENTS: If the clearest event beat is only visible more than 10 seconds later, skip that moment.',
     '7. SANITY CHECK: Before selecting a moment, verify that the event actually happens on screen and that both answer options still make sense when compared against the transcript, visual summary, and nearby cues. Skip moments that are ambiguous, speculative, or only reaction shots.',
+    '',
+    options?.recalibrate ? '### RECALIBRATION MODE' : '',
+    options?.recalibrate
+      ? 'These quiz moments already exist. Re-evaluate every timestamp so it lands earlier than the event but as close as possible to the event onset. Preserve chronological order and do not let the next moment begin until the previous event has clearly ended.'
+      : '',
+    options?.recalibrate && options.priorMoments?.length
+      ? `Current quiz moments to recalibrate:\n${formatPriorMoments(options.priorMoments)}`
+      : '',
+    options?.recalibrate ? 'If two moments would overlap, prefer the earlier event that is safest to verify and move the later one forward only if needed to keep the timeline non-overlapping.' : '',
     '',
     '### DATA TO ANALYZE',
     `Transcript:\n${analysis.transcript || '(none)'}`,
@@ -64,6 +87,23 @@ function buildPrompt(analysis: NormalizedVideoAnalysis) {
   ].join('\n');
 }
 
+function validateQuizMoments(moments: QuizMoment[]) {
+  const sorted = [...moments].sort((a, b) => a.timestamp - b.timestamp);
+
+  for (let index = 1; index < sorted.length; index += 1) {
+    const previous = sorted[index - 1];
+    const current = sorted[index];
+
+    if (current.timestamp - previous.timestamp < 15) {
+      throw new Error(
+        `Generated quiz moments are too close together: ${previous.timestamp.toFixed(2)}s and ${current.timestamp.toFixed(2)}s.`
+      );
+    }
+  }
+
+  return sorted;
+}
+
 function parseMoments(rawContent: string): QuizMoment[] {
   const cleaned = stripCodeFences(rawContent);
   const parsed = JSON.parse(cleaned) as unknown;
@@ -71,7 +111,7 @@ function parseMoments(rawContent: string): QuizMoment[] {
   if (Array.isArray(parsed) && parsed.length === 0) {
     return [];
   }
-  return quizMomentsSchema.parse(parsed);
+  return validateQuizMoments(quizMomentsSchema.parse(parsed));
 }
 
 function pruneGoogleAnnotations(raw: unknown): unknown {
@@ -134,7 +174,8 @@ export interface OpenRouterQuizGenerationResult {
 export async function generateQuizMomentsFromOpenRouter(
   analysis: NormalizedVideoAnalysis,
   videoName: string,
-  googleAnnotations?: unknown
+  googleAnnotations?: unknown,
+  options?: QuizGenerationOptions
 ): Promise<OpenRouterQuizGenerationResult> {
   const apiKey = process.env.OPENROUTER_API_KEY?.trim();
   if (!apiKey) {
@@ -153,7 +194,7 @@ export async function generateQuizMomentsFromOpenRouter(
     },
     {
       role: 'user',
-      content: buildPrompt(analysis)
+      content: buildPrompt(analysis, options)
     }
   ];
 
