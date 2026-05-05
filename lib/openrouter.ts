@@ -33,7 +33,11 @@ function formatPriorMoments(priorMoments: QuizMoment[]) {
     .join('\n');
 }
 
-function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGenerationOptions) {
+function getMinimumExpectedMoments(): number {
+  return 4;
+}
+
+function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGenerationOptions, attemptNumber = 1) {
   const durationLine =
     typeof analysis.durationSeconds === 'number' && Number.isFinite(analysis.durationSeconds)
       ? `Approximate video duration: ${analysis.durationSeconds.toFixed(2)} seconds. Only use timestamps within [0, duration].`
@@ -43,10 +47,15 @@ function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGeneration
     .map((cue) => `${cue.timestamp.toFixed(2)}s | ${cue.source} | ${cue.description}`)
     .join('\n');
 
+  const minimumMoments = 4;
+  const insufficientWarning = attemptNumber > 1
+    ? `\n⚠️ CRITICAL: Attempt ${attemptNumber}. You must generate at least ${minimumMoments} valid moments. This is mandatory. Do not return fewer than ${minimumMoments} moments.`
+    : '';
+
   return [
     '### TASK',
     'Act as a Multimodal Reasoning Engine. Analyze the provided video metadata (Transcript + Visual Summary + Cues) to identify high-tension "Divisive Prediction Moments".',
-    '',
+    insufficientWarning,
     '### SELECTION STRATEGY (CRITICAL)',
     '1. CORRELATE: Cross-reference the transcript sentiment with visual cues. Look for moments where the audio builds tension but the visual outcome is non-obvious.',
     '2. DIVISIVENESS: A moment is "divisive" if a viewer could reasonably argue for two different immediate outcomes. Avoid "dead-air" or obvious continuity.',
@@ -189,83 +198,110 @@ export async function generateQuizMomentsFromOpenRouter(
     throw new Error('OPENROUTER_MODEL is required in strict API mode.');
   }
 
-  const messages: Array<{ role: string; content: string }> = [
-    {
-      role: 'system',
-      content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
-    },
-    {
-      role: 'user',
-      content: buildPrompt(analysis, options)
-    }
-  ];
+  const minimumMoments = 4;
+  let lastResult: OpenRouterQuizGenerationResult | null = null;
+  let attemptNumber = 1;
+  const MAX_RETRIES = 3;
 
-  if (googleAnnotations) {
-    try {
-      const pruned = pruneGoogleAnnotations(googleAnnotations);
-      messages.push({
+  while (attemptNumber <= MAX_RETRIES + 1) {
+    const messages: Array<{ role: string; content: string }> = [
+      {
+        role: 'system',
+        content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
+      },
+      {
         role: 'user',
-        content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(pruned)}`
-      });
-    } catch (e) {
-      messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
+        content: buildPrompt(analysis, options, attemptNumber)
+      }
+    ];
+
+    if (googleAnnotations) {
+      try {
+        const pruned = pruneGoogleAnnotations(googleAnnotations);
+        messages.push({
+          role: 'user',
+          content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(pruned)}`
+        });
+      } catch (e) {
+        messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
+      }
     }
-  }
 
-  let body: any = {
-    model,
-    messages,
-    temperature: 0.0,
-    reasoning: {
-      enabled: true
-    },
-    verbosity: 'max'
-  };
-
-  // Pre-flight token estimation to avoid sending payloads that exceed limits.
-  const bodyString = JSON.stringify(body);
-  const estimatedTokens = estimateTokens(bodyString);
-  const TOKEN_LIMIT = parseInt(process.env.OPENROUTER_TOKEN_LIMIT || '900000', 10);
-  if (estimatedTokens > TOKEN_LIMIT) {
-    // If configured, let OpenRouter attempt context compression as a last resort.
-    if (process.env.OPENROUTER_USE_COMPRESSION === '1') {
-      body.plugins = [{ id: 'context-compression' }];
-    } else {
-      throw new Error(
-        `Payload too large: ~${estimatedTokens.toLocaleString()} estimated tokens (limit ${TOKEN_LIMIT.toLocaleString()}). ` +
-          `Prune googleAnnotations before sending or enable OPENROUTER_USE_COMPRESSION.`
-      );
-    }
-  }
-
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.OPENROUTER_APP_URL || 'http://localhost:3000',
-      'X-Title': process.env.OPENROUTER_APP_NAME || 'Video Prediction Quiz'
-    },
-    body: JSON.stringify(body)
-  });
-
-  if (!response.ok) {
-    const responseText = await response.text().catch(() => 'Unable to read OpenRouter error body.');
-    throw new Error(`OpenRouter request failed with ${response.status}: ${responseText.slice(0, 500)}`);
-  }
-
-  const rawResponse = await response.json();
-  const payload = openRouterSchema.parse(rawResponse);
-  const content = payload.choices[0]?.message?.content ?? '';
-
-  try {
-    return {
-      quizMoments: parseMoments(content),
-      rawContent: content,
-      rawResponse,
-      model
+    let body: any = {
+      model,
+      messages,
+      temperature: 0.0,
+      reasoning: {
+        enabled: true
+      },
+      verbosity: 'max'
     };
-  } catch (error) {
-    throw new Error(`OpenRouter returned invalid quiz JSON: ${(error as Error).message}`);
+
+    // Pre-flight token estimation to avoid sending payloads that exceed limits.
+    const bodyString = JSON.stringify(body);
+    const estimatedTokens = estimateTokens(bodyString);
+    const TOKEN_LIMIT = parseInt(process.env.OPENROUTER_TOKEN_LIMIT || '900000', 10);
+    if (estimatedTokens > TOKEN_LIMIT) {
+      // If configured, let OpenRouter attempt context compression as a last resort.
+      if (process.env.OPENROUTER_USE_COMPRESSION === '1') {
+        body.plugins = [{ id: 'context-compression' }];
+      } else {
+        throw new Error(
+          `Payload too large: ~${estimatedTokens.toLocaleString()} estimated tokens (limit ${TOKEN_LIMIT.toLocaleString()}). ` +
+            `Prune googleAnnotations before sending or enable OPENROUTER_USE_COMPRESSION.`
+        );
+      }
+    }
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': process.env.OPENROUTER_APP_URL || 'http://localhost:3000',
+        'X-Title': process.env.OPENROUTER_APP_NAME || 'Video Prediction Quiz'
+      },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => 'Unable to read OpenRouter error body.');
+      throw new Error(`OpenRouter request failed with ${response.status}: ${responseText.slice(0, 500)}`);
+    }
+
+    const rawResponse = await response.json();
+    const payload = openRouterSchema.parse(rawResponse);
+    const content = payload.choices[0]?.message?.content ?? '';
+
+    try {
+      const quizMoments = parseMoments(content);
+      lastResult = {
+        quizMoments,
+        rawContent: content,
+        rawResponse,
+        model
+      };
+
+      // Check if we have enough moments
+      if (quizMoments.length >= minimumMoments) {
+        return lastResult;
+      }
+
+      // Not enough moments, prepare to retry
+      attemptNumber++;
+    } catch (error) {
+      // Parsing error, retry
+      attemptNumber++;
+      if (attemptNumber > MAX_RETRIES + 1) {
+        throw new Error(`OpenRouter returned invalid quiz JSON after ${MAX_RETRIES} retries: ${(error as Error).message}`);
+      }
+    }
   }
+
+  // Return the last result even if it has insufficient moments
+  if (lastResult) {
+    return lastResult;
+  }
+
+  throw new Error(`Failed to generate quiz moments after ${MAX_RETRIES} retries.`);
 }
