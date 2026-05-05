@@ -98,31 +98,14 @@ function buildPrompt(analysis: NormalizedVideoAnalysis, options?: QuizGeneration
   ].join('\n');
 }
 
-function validateQuizMoments(moments: QuizMoment[]) {
-  const sorted = [...moments].sort((a, b) => a.timestamp - b.timestamp);
-
-  for (let index = 1; index < sorted.length; index += 1) {
-    const previous = sorted[index - 1];
-    const current = sorted[index];
-
-    if (current.timestamp - previous.timestamp < 15) {
-      throw new Error(
-        `Generated quiz moments are too close together: ${previous.timestamp.toFixed(2)}s and ${current.timestamp.toFixed(2)}s.`
-      );
-    }
-  }
-
-  return sorted;
+function sortQuizMoments(moments: QuizMoment[]) {
+  return [...moments].sort((a, b) => a.timestamp - b.timestamp);
 }
 
 function parseMoments(rawContent: string): QuizMoment[] {
   const cleaned = stripCodeFences(rawContent);
   const parsed = JSON.parse(cleaned) as unknown;
-  // If the model returns an empty array (no moments passed verification), return it gracefully.
-  if (Array.isArray(parsed) && parsed.length === 0) {
-    return [];
-  }
-  return validateQuizMoments(quizMomentsSchema.parse(parsed));
+  return sortQuizMoments(quizMomentsSchema.parse(parsed));
 }
 
 function pruneGoogleAnnotations(raw: unknown): unknown {
@@ -198,110 +181,80 @@ export async function generateQuizMomentsFromOpenRouter(
     throw new Error('OPENROUTER_MODEL is required in strict API mode.');
   }
 
-  const minimumMoments = 4;
-  let lastResult: OpenRouterQuizGenerationResult | null = null;
-  let attemptNumber = 1;
-  const MAX_RETRIES = 3;
-
-  while (attemptNumber <= MAX_RETRIES + 1) {
-    const messages: Array<{ role: string; content: string }> = [
+  const messages: Array<{ role: string; content: string }> = [
       {
         role: 'system',
         content: `You are a precise JSON generator for a video prediction quiz about the file "${videoName}". You follow user instructions exactly and output only valid JSON arrays.`
       },
       {
         role: 'user',
-        content: buildPrompt(analysis, options, attemptNumber)
+        content: buildPrompt(analysis, options)
       }
     ];
 
-    if (googleAnnotations) {
-      try {
-        const pruned = pruneGoogleAnnotations(googleAnnotations);
-        messages.push({
-          role: 'user',
-          content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(pruned)}`
-        });
-      } catch (e) {
-        messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
-      }
-    }
-
-    let body: any = {
-      model,
-      messages,
-      temperature: 0.0,
-      reasoning: {
-        enabled: true
-      },
-      verbosity: 'max'
-    };
-
-    // Pre-flight token estimation to avoid sending payloads that exceed limits.
-    const bodyString = JSON.stringify(body);
-    const estimatedTokens = estimateTokens(bodyString);
-    const TOKEN_LIMIT = parseInt(process.env.OPENROUTER_TOKEN_LIMIT || '900000', 10);
-    if (estimatedTokens > TOKEN_LIMIT) {
-      // If configured, let OpenRouter attempt context compression as a last resort.
-      if (process.env.OPENROUTER_USE_COMPRESSION === '1') {
-        body.plugins = [{ id: 'context-compression' }];
-      } else {
-        throw new Error(
-          `Payload too large: ~${estimatedTokens.toLocaleString()} estimated tokens (limit ${TOKEN_LIMIT.toLocaleString()}). ` +
-            `Prune googleAnnotations before sending or enable OPENROUTER_USE_COMPRESSION.`
-        );
-      }
-    }
-
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.OPENROUTER_APP_URL || 'http://localhost:3000',
-        'X-Title': process.env.OPENROUTER_APP_NAME || 'Video Prediction Quiz'
-      },
-      body: JSON.stringify(body)
-    });
-
-    if (!response.ok) {
-      const responseText = await response.text().catch(() => 'Unable to read OpenRouter error body.');
-      throw new Error(`OpenRouter request failed with ${response.status}: ${responseText.slice(0, 500)}`);
-    }
-
-    const rawResponse = await response.json();
-    const payload = openRouterSchema.parse(rawResponse);
-    const content = payload.choices[0]?.message?.content ?? '';
-
+  if (googleAnnotations) {
     try {
-      const quizMoments = parseMoments(content);
-      lastResult = {
-        quizMoments,
-        rawContent: content,
-        rawResponse,
-        model
-      };
-
-      // Check if we have enough moments
-      if (quizMoments.length >= minimumMoments) {
-        return lastResult;
-      }
-
-      // Not enough moments, prepare to retry
-      attemptNumber++;
-    } catch (error) {
-      // Parsing error, retry
-      attemptNumber++;
-      if (attemptNumber > MAX_RETRIES + 1) {
-        throw new Error(`OpenRouter returned invalid quiz JSON after ${MAX_RETRIES} retries: ${(error as Error).message}`);
-      }
+      const pruned = pruneGoogleAnnotations(googleAnnotations);
+      messages.push({
+        role: 'user',
+        content: `GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS:\n${JSON.stringify(pruned)}`
+      });
+    } catch (e) {
+      messages.push({ role: 'user', content: 'GOOGLE_VIDEO_INTELLIGENCE_ANNOTATIONS: <unserializable>' });
     }
   }
 
-  // Return the last result even if it has insufficient moments
-  if (lastResult) {
-    return lastResult;
+  let body: any = {
+    model,
+    messages,
+    temperature: 0.0,
+    reasoning: {
+      enabled: true
+    },
+    verbosity: 'max'
+  };
+
+  // Pre-flight token estimation to avoid sending payloads that exceed limits.
+  const bodyString = JSON.stringify(body);
+  const estimatedTokens = estimateTokens(bodyString);
+  const TOKEN_LIMIT = parseInt(process.env.OPENROUTER_TOKEN_LIMIT || '900000', 10);
+  if (estimatedTokens > TOKEN_LIMIT) {
+    // If configured, let OpenRouter attempt context compression as a last resort.
+    if (process.env.OPENROUTER_USE_COMPRESSION === '1') {
+      body.plugins = [{ id: 'context-compression' }];
+    } else {
+      throw new Error(
+        `Payload too large: ~${estimatedTokens.toLocaleString()} estimated tokens (limit ${TOKEN_LIMIT.toLocaleString()}). ` +
+          `Prune googleAnnotations before sending or enable OPENROUTER_USE_COMPRESSION.`
+      );
+    }
   }
 
-  throw new Error(`Failed to generate quiz moments after ${MAX_RETRIES} retries.`);
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': process.env.OPENROUTER_APP_URL || 'http://localhost:3000',
+      'X-Title': process.env.OPENROUTER_APP_NAME || 'Video Prediction Quiz'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text().catch(() => 'Unable to read OpenRouter error body.');
+    throw new Error(`OpenRouter request failed with ${response.status}: ${responseText.slice(0, 500)}`);
+  }
+
+  const rawResponse = await response.json();
+  const payload = openRouterSchema.parse(rawResponse);
+  const content = payload.choices[0]?.message?.content ?? '';
+
+  const quizMoments = parseMoments(content);
+  return {
+    quizMoments,
+    rawContent: content,
+    rawResponse,
+    model
+  };
 }
